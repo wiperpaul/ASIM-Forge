@@ -46,9 +46,7 @@ def _write_cluster(path: Path) -> ClusterRecord:
         schema_suggestion=SchemaSuggestion(
             schema_name="Authentication",
             confidence=1.0,
-            ranked_scores=[
-                SchemaScore(schema_name="Authentication", score=1, evidence=["login"])
-            ],
+            ranked_scores=[SchemaScore(schema_name="Authentication", score=1, evidence=["login"])],
         ),
     )
     path.write_text(cluster.model_dump_json() + "\n", encoding="utf-8")
@@ -106,3 +104,31 @@ def test_rejects_mapping_to_unknown_parameter_slot(tmp_path: Path) -> None:
 
     with pytest.raises(ReviewError, match="unknown slots: p9"):
         compile_reviews(clusters_path, reviews_path, tmp_path / "compiled")
+
+
+def test_reports_stage_one_approval_as_awaiting_mapping(tmp_path: Path) -> None:
+    clusters_path = tmp_path / "clusters.jsonl"
+    reviews_path = tmp_path / "reviews.jsonl"
+    output_dir = tmp_path / "compiled"
+    cluster = _write_cluster(clusters_path)
+    reviews_path.write_text(
+        json.dumps(
+            {
+                "cluster_id": cluster.cluster_id,
+                "reviewer": "cluster-reviewer",
+                "status": "approved",
+                "notes": "The examples form one coherent pattern.",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    manifest = compile_reviews(clusters_path, reviews_path, output_dir)
+
+    assert manifest.compiled_count == 0
+    assert manifest.skipped_reviews == {"awaiting_mapping": 1}
+    assert json.loads((output_dir / "compile-manifest.json").read_text("utf-8"))[
+        "skipped_reviews"
+    ] == {"awaiting_mapping": 1}
+    assert list(output_dir.glob("*.kql")) == []

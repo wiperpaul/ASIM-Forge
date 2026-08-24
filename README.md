@@ -2,19 +2,21 @@
 
 ASIM Forge is a human-supervised walking skeleton for turning static security logs into reviewed Microsoft Advanced Security Information Model (ASIM) parser candidates.
 
-Milestone 1 implements this complete path:
+Milestone 1 implements the cluster-review boundary and a deterministic compiler walking skeleton:
 
 ```text
 data/logs/*.{log,txt}
   -> DeepParse mask synthesis and Drain clustering
   -> stable typed cluster records
-  -> Potato review task
-  -> explicit human decision
-  -> typed parser specification
+  -> Stage 1 Potato cluster review
+  -> accepted cluster awaiting ASIM mapping
+  -> later engineering review / typed parser specification
   -> deterministic KQL candidate
 ```
 
-The human decision is a hard compilation gate. A baseline schema suggestion never produces KQL by itself. Rejected, split, incomplete, duplicated, unknown-cluster, and invalid-slot reviews are refused or skipped with an explicit result.
+Stage 1 decides only whether the examples form a coherent event pattern. Vendor/product metadata belongs to source onboarding, and ASIM schema and field mapping belong to a later engineering review. The compiler accepts the complete canonical review contract to exercise the downstream gate; a Stage 1 approval is reported as `awaiting_mapping` and never produces KQL by itself.
+
+The stages are separate approval checkpoints, not necessarily separate human sessions. [The roadmap](ROADMAP.md) plans a progressive review that prepares an ASIM suggestion in advance and reveals it immediately after cluster approval, so an eligible reviewer can continue while the examples are still fresh or defer it to an ASIM specialist.
 
 ## Why DeepParse
 
@@ -52,7 +54,7 @@ uv sync --extra review
 uv run potato start artifacts/demo/potato/config.yaml -p 8000
 ```
 
-Potato persists live review state under `potato/annotation_output/<reviewer>/user_state.json`. ASIM Forge can compile that state directly:
+Potato persists Stage 1 review state under `potato/annotation_output/<reviewer>/user_state.json`. Passing that state to the compiler is safe, but accepted clusters are reported as `awaiting_mapping` until the later engineering review supplies parser metadata and ASIM mappings:
 
 ```powershell
 uv run asim-forge compile `
@@ -61,9 +63,9 @@ uv run asim-forge compile `
   --output artifacts/demo/compiled
 ```
 
-For an approved cluster, `parser_spec` is a JSON object containing `parser_name`, `vendor`, `product`, optional source table/field overrides, and a `field_mappings` list. Each mapping targets a displayed occurrence-specific slot such as `p1`; labels such as `IPV4` are descriptive and are not used as ambiguous mapping keys.
+Potato presents the template, representative events, and extracted slots as separate structured views. The reviewer approves, splits, rejects, or requests more evidence and can add notes. It does not ask the cluster reviewer to identify the vendor/product, choose an ASIM schema, edit JSON, or map fields.
 
-Canonical review JSONL is also accepted for reproducible tests, source control, and integration with a different review UI. See `examples/sample-review/reviews.jsonl` for the contract.
+Canonical engineering-review JSONL is accepted for reproducible compiler tests, source control, and integration with the later mapping UI. See `examples/sample-review/reviews.jsonl` for the complete contract.
 
 ## Artefacts
 
@@ -74,7 +76,7 @@ Canonical review JSONL is also accepted for reproducible tests, source control, 
 - `potato/items.jsonl`: one task per cluster.
 - `potato/config.yaml`: a portable Potato configuration.
 
-`asim-forge compile` writes one `*.parser-spec.json` and one `*.kql` per approved review, plus `compile-manifest.json` recording generated and skipped decisions.
+`asim-forge compile` writes one `*.parser-spec.json` and one `*.kql` per approved and fully mapped engineering review, plus `compile-manifest.json` recording generated, rejected, and awaiting-mapping decisions.
 
 Operational logs, generated artefacts, and Potato annotation state are ignored by Git by default because they may contain sensitive security data.
 
@@ -83,6 +85,7 @@ Operational logs, generated artefacts, and Potato annotation state are ignored b
 The KQL files are reviewable candidates, not production-ready Sentinel releases. Milestone 1 does not yet:
 
 - validate mappings against a pinned ASIM catalogue;
+- provide the later source-metadata and ASIM-mapping review interface;
 - run ASIM schema or data testers;
 - execute KQL against a Sentinel workspace;
 - generate schema-specific mandatory fields or event-result normalization;

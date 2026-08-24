@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
+import html
 import json
+import re
 from pathlib import Path
 
 import yaml
 
 from .models import ClusterRecord, ReviewTask
 
+_PLACEHOLDER = re.compile(r"<VAR:[A-Za-z0-9_]+>")
 
-def write_potato_bundle(clusters: list[ClusterRecord], output_dir: Path) -> tuple[Path, Path]:
+
+def write_potato_bundle(
+    clusters: list[ClusterRecord],
+    output_dir: Path,
+) -> tuple[Path, Path]:
     bundle_dir = output_dir / "potato"
     bundle_dir.mkdir(parents=True, exist_ok=True)
     items_path = bundle_dir / "items.jsonl"
@@ -30,86 +37,135 @@ def _to_review_task(cluster: ClusterRecord) -> ReviewTask:
         f"[{event.source_file}:{event.line_number}] {event.text}"
         for event in cluster.representative_events
     )
-    slots = "\n".join(
-        f"- {slot.slot_id} {slot.placeholder}: {', '.join(slot.examples) or 'no samples'}"
-        for slot in cluster.parameter_slots
-    ) or "- No parameters detected"
-    evidence = ", ".join(
-        word
-        for score in cluster.schema_suggestion.ranked_scores
-        if score.schema_name == cluster.schema_suggestion.schema_name
-        for word in score.evidence
-    ) or "none"
+    slots = (
+        "\n".join(
+            f"- {slot.slot_id} {slot.placeholder}: {', '.join(slot.examples) or 'no samples'}"
+            for slot in cluster.parameter_slots
+        )
+        or "- No parameters detected"
+    )
     text = (
         f"TEMPLATE\n{cluster.template}\n\n"
         f"REPRESENTATIVE EVENTS\n{samples}\n\n"
-        f"PARAMETER SLOTS\n{slots}\n\n"
-        f"BASELINE SUGGESTION\n{cluster.schema_suggestion.schema_name} "
-        f"({cluster.schema_suggestion.confidence:.0%}); evidence: {evidence}"
+        f"PARAMETER SLOTS\n{slots}"
     )
+    representative_events_table: dict[str, object] = {
+        "headers": ["Source", "Event"],
+        "rows": [
+            [f"{event.source_file}:{event.line_number}", event.text]
+            for event in cluster.representative_events
+        ],
+    }
+    parameter_slots_table: dict[str, object] = {
+        "headers": ["Slot", "Type", "Example values"],
+        "rows": [
+            [slot.slot_id, slot.label, ", ".join(slot.examples) or "No samples"]
+            for slot in cluster.parameter_slots
+        ],
+    }
     return ReviewTask(
         id=cluster.cluster_id,
         text=text,
         cluster_id=cluster.cluster_id,
         template=cluster.template,
+        template_html=_render_template_html(cluster),
         event_count=cluster.event_count,
+        representative_events_table=representative_events_table,
+        parameter_slots_table=parameter_slots_table,
         suggested_schema=cluster.schema_suggestion.schema_name,
         suggestion_confidence=cluster.schema_suggestion.confidence,
         parameter_slots=[slot.model_dump(mode="json") for slot in cluster.parameter_slots],
     )
 
 
+def _render_template_html(cluster: ClusterRecord) -> str:
+    parts: list[str] = []
+    cursor = 0
+    matches = list(_PLACEHOLDER.finditer(cluster.template))
+    for index, match in enumerate(matches):
+        parts.append(html.escape(cluster.template[cursor : match.start()]))
+        if index < len(cluster.parameter_slots):
+            slot = cluster.parameter_slots[index]
+            parts.append(
+                f"<mark><code>{html.escape(slot.slot_id)} · {html.escape(slot.label)}</code></mark>"
+            )
+        else:
+            parts.append(html.escape(match.group(0)))
+        cursor = match.end()
+    parts.append(html.escape(cluster.template[cursor:]))
+    return "".join(parts)
+
+
 def _potato_config() -> dict[str, object]:
-    parser_spec_example = json.dumps(
-        {
-            "parser_name": "vimAsimForgeExample",
-            "vendor": "Example Vendor",
-            "product": "Example Product",
-            "source_table": "Syslog",
-            "message_field": "SyslogMessage",
-            "field_mappings": [
-                {"slot_id": "p1", "asim_field": "TargetUsername", "transform": "string"}
-            ],
-        },
-        indent=2,
+    annotation_instructions = (
+        "<p><strong>Goal:</strong> decide whether this cluster is coherent enough "
+        "to become an ASIM parser candidate.</p>"
+        "<ol>"
+        "<li><strong>Inspect the evidence.</strong> Compare the template, example events, "
+        "and parameter slots.</li>"
+        "<li><strong>Choose a decision.</strong> Use <code>approved</code> only when the "
+        "events belong together and the slots are meaningful. Use <code>needs_split</code> "
+        "for mixed patterns, <code>rejected</code> for an unusable cluster, or "
+        "<code>insufficient_evidence</code> when the samples are not enough.</li>"
+        "<li><strong>Add review notes</strong> when you split or reject a cluster, "
+        "identify missing evidence, or encounter ambiguity.</li>"
+        "</ol>"
+        "<p><strong>Not part of this review:</strong> vendor/product metadata, ASIM "
+        "schema selection, field mappings, and parser generation are handled in later "
+        "submission and engineering stages.</p>"
     )
     return {
         "annotation_task_name": "ASIM Forge cluster review",
         "task_dir": ".",
         "data_files": ["items.jsonl"],
         "item_properties": {"id_key": "id", "text_key": "text"},
+        "instance_display": {
+            "fields": [
+                {
+                    "key": "template_html",
+                    "type": "html",
+                    "label": "Template pattern",
+                },
+                {
+                    "key": "representative_events_table",
+                    "type": "spreadsheet",
+                    "label": "Representative events",
+                    "display_options": {
+                        "selectable": False,
+                        "compact": True,
+                        "border_style": "rounded",
+                        "header_style": "light",
+                        "max_height": 320,
+                    },
+                },
+                {
+                    "key": "parameter_slots_table",
+                    "type": "spreadsheet",
+                    "label": "Extracted parameter slots",
+                    "display_options": {
+                        "selectable": False,
+                        "compact": True,
+                        "border_style": "rounded",
+                        "header_style": "light",
+                        "max_height": 240,
+                    },
+                },
+            ],
+            "layout": {"direction": "vertical", "gap": "16px"},
+        },
         "output_annotation_dir": "annotation_output/",
         "export_annotation_format": "jsonl",
         "require_password": False,
         "user_config": {"allow_all_users": True, "users": []},
         "login": {"type": "open"},
-        "annotation_instructions": (
-            "Review the cluster before approving it. The baseline is not ground truth. "
-            "For approved clusters, enter a complete JSON parser specification using this shape:\n"
-            f"{parser_spec_example}"
-        ),
+        "annotation_instructions": annotation_instructions,
         "annotation_schemes": [
             {
                 "annotation_type": "radio",
                 "name": "cluster_decision",
-                "description": "Is this cluster safe to compile?",
+                "description": "Does this cluster represent a coherent event pattern?",
                 "labels": ["approved", "needs_split", "rejected", "insufficient_evidence"],
                 "sequential_key_binding": True,
-            },
-            {
-                "annotation_type": "radio",
-                "name": "asim_schema",
-                "description": "Which ASIM schema best represents the cluster?",
-                "labels": ["Authentication", "NetworkSession", "AuditEvent"],
-                "sequential_key_binding": True,
-            },
-            {
-                "annotation_type": "text",
-                "name": "parser_spec",
-                "description": "Approved parser metadata and slot mappings as JSON.",
-                "multiline": True,
-                "rows": 12,
-                "cols": 100,
             },
             {
                 "annotation_type": "text",

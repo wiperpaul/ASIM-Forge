@@ -42,6 +42,9 @@ def compile_reviews(
         cluster = cluster_by_id.get(decision.cluster_id)
         if cluster is None:
             raise ReviewError(f"Approved review references unknown cluster: {decision.cluster_id}")
+        if not _has_parser_review(decision):
+            skipped["awaiting_mapping"] += 1
+            continue
         specification = _to_specification(cluster, decision)
         compiled.append(specification)
         stem = specification.parser_name
@@ -54,8 +57,6 @@ def compile_reviews(
         kql_path.write_text(compile_kql(specification), encoding="utf-8")
         outputs.extend([spec_path.name, kql_path.name])
 
-    if not compiled:
-        raise ReviewError("No approved reviews were eligible for compilation")
     manifest = CompileManifest(
         cluster_count=len(clusters),
         review_count=len(decisions),
@@ -68,6 +69,18 @@ def compile_reviews(
         encoding="utf-8",
     )
     return manifest
+
+
+def _has_parser_review(decision: ReviewDecision) -> bool:
+    return all(
+        value is not None
+        for value in (
+            decision.schema_name,
+            decision.parser_name,
+            decision.vendor,
+            decision.product,
+        )
+    )
 
 
 def compile_kql(specification: ParserSpecification) -> str:
@@ -89,16 +102,13 @@ def compile_kql(specification: ParserSpecification) -> str:
             f'    | extend {temporary} = extract(@"{_verbatim(regex)}", '
             f"{capture}, {source.message_field})"
         )
-        lines.append(
-            f"    | extend {mapping.asim_field} = "
-            f"{_transform(mapping, temporary)}"
-        )
+        lines.append(f"    | extend {mapping.asim_field} = {_transform(mapping, temporary)}")
     lines.extend(
         [
             "    | extend",
-            f'        EventSchema = {_kql_string(specification.schema_name)},',
-            f'        EventVendor = {_kql_string(source.vendor)},',
-            f'        EventProduct = {_kql_string(source.product)}',
+            f"        EventSchema = {_kql_string(specification.schema_name)},",
+            f"        EventVendor = {_kql_string(source.vendor)},",
+            f"        EventProduct = {_kql_string(source.product)}",
         ]
     )
     if temporary_fields:
@@ -142,9 +152,7 @@ def _to_specification(
     }
     missing = sorted(name for name, value in required.items() if value is None)
     if missing:
-        raise ReviewError(
-            f"Approved review {cluster.cluster_id} is missing: {', '.join(missing)}"
-        )
+        raise ReviewError(f"Approved review {cluster.cluster_id} is missing: {', '.join(missing)}")
 
     available_slots = {slot.slot_id for slot in cluster.parameter_slots}
     mapped_slots = [mapping.slot_id for mapping in decision.field_mappings]

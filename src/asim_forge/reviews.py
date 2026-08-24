@@ -54,8 +54,9 @@ def _load_potato_state(data: dict[str, Any]) -> list[ReviewDecision]:
         raise ReviewError("Potato user state has no annotation mapping")
 
     decisions: list[ReviewDecision] = []
-    for cluster_id, values in annotations.items():
-        if not isinstance(values, dict):
+    for cluster_id, raw_values in annotations.items():
+        values = _normalize_potato_values(raw_values)
+        if values is None:
             continue
         status = _extract_choice(values.get("cluster_decision"))
         if status is None:
@@ -64,14 +65,15 @@ def _load_potato_state(data: dict[str, Any]) -> list[ReviewDecision]:
         notes = _extract_text(values.get("review_notes")) or ""
         raw_spec = _extract_text(values.get("parser_spec"))
         spec: dict[str, Any] = {}
-        if raw_spec:
+        if status == "approved" and raw_spec:
             try:
                 parsed_spec = json.loads(raw_spec)
             except json.JSONDecodeError as error:
                 raise ReviewError(f"Invalid parser_spec JSON for {cluster_id}: {error}") from error
             if not isinstance(parsed_spec, dict):
                 raise ReviewError(f"parser_spec for {cluster_id} must be a JSON object")
-            spec = parsed_spec
+            if _parser_spec_is_complete(parsed_spec):
+                spec = parsed_spec
 
         payload = {
             "cluster_id": str(cluster_id),
@@ -89,6 +91,49 @@ def _load_potato_state(data: dict[str, Any]) -> list[ReviewDecision]:
     if not decisions:
         raise ReviewError("Potato user state contains no completed cluster decisions")
     return decisions
+
+
+def _normalize_potato_values(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        return value
+    if not isinstance(value, list):
+        return None
+
+    normalized: dict[str, Any] = {}
+    for entry in value:
+        if not isinstance(entry, list) or len(entry) != 2:
+            continue
+        identifier, stored_value = entry
+        if not isinstance(identifier, dict):
+            continue
+        schema = identifier.get("schema")
+        name = identifier.get("name")
+        if not isinstance(schema, str) or not isinstance(name, str):
+            continue
+        if name == "text_box":
+            normalized[schema] = {"text": str(stored_value)}
+        else:
+            schema_value = normalized.setdefault(schema, {"labels": {}})
+            labels = schema_value.setdefault("labels", {})
+            labels[name] = stored_value is not None and stored_value is not False
+    return normalized
+
+
+def _parser_spec_is_complete(spec: dict[str, Any]) -> bool:
+    required_strings = ("parser_name", "vendor", "product")
+    if any(not isinstance(spec.get(key), str) or not spec[key].strip() for key in required_strings):
+        return False
+    mappings = spec.get("field_mappings")
+    if not isinstance(mappings, list):
+        return False
+    for mapping in mappings:
+        if not isinstance(mapping, dict):
+            return False
+        for key in ("slot_id", "asim_field", "transform"):
+            value = mapping.get(key)
+            if not isinstance(value, str) or not value.strip():
+                return False
+    return True
 
 
 def _extract_choice(value: Any) -> str | None:

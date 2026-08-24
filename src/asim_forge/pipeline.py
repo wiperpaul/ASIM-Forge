@@ -54,4 +54,3 @@ def build_review_bundle(
         encoding="utf-8",
     )
     return manifest
-
