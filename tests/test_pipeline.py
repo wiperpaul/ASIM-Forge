@@ -23,20 +23,57 @@ def test_builds_typed_clusters_and_potato_bundle(tmp_path: Path) -> None:
     assert manifest.event_count == 4
     assert manifest.cluster_count == 2
     records = [
-        json.loads(line)
-        for line in (output_dir / "clusters.jsonl").read_text("utf-8").splitlines()
+        json.loads(line) for line in (output_dir / "clusters.jsonl").read_text("utf-8").splitlines()
     ]
     assert {record["schema_suggestion"]["schema_name"] for record in records} == {
         "Authentication",
         "NetworkSession",
     }
     assert all(record["parameter_slots"] for record in records)
+    review_items = [
+        json.loads(line)
+        for line in (output_dir / "potato" / "items.jsonl").read_text("utf-8").splitlines()
+    ]
+    assert all("BASELINE SUGGESTION" not in item["text"] for item in review_items)
+    assert all("<mark><code>p1 · " in item["template_html"] for item in review_items)
+    assert all(
+        item["representative_events_table"]["headers"] == ["Source", "Event"]
+        for item in review_items
+    )
+    assert all(
+        item["parameter_slots_table"]["headers"] == ["Slot", "Type", "Example values"]
+        for item in review_items
+    )
+    assert all("predictions" not in item for item in review_items)
+
     config = yaml.safe_load((output_dir / "potato" / "config.yaml").read_text("utf-8"))
     assert config["task_dir"] == "."
     assert config["data_files"] == ["items.jsonl"]
     assert config["require_password"] is False
-    assert {scheme["name"] for scheme in config["annotation_schemes"]} >= {
+    assert [field["key"] for field in config["instance_display"]["fields"]] == [
+        "template_html",
+        "representative_events_table",
+        "parameter_slots_table",
+    ]
+    assert [field["type"] for field in config["instance_display"]["fields"]] == [
+        "html",
+        "spreadsheet",
+        "spreadsheet",
+    ]
+    assert "pre_annotation" not in config
+    instructions = config["annotation_instructions"]
+    assert "<ol>" in instructions
+    assert "Not part of this review:" in instructions
+    assert "handled in later" in instructions
+    assert "baseline" not in instructions.casefold()
+    assert "<pre><code>" not in instructions
+    assert "vimAsimForgeExample" not in instructions
+    assert {scheme["name"] for scheme in config["annotation_schemes"]} == {
         "cluster_decision",
-        "asim_schema",
-        "parser_spec",
+        "review_notes",
     }
+    schemes = {scheme["name"]: scheme for scheme in config["annotation_schemes"]}
+    assert (
+        schemes["cluster_decision"]["description"]
+        == "Does this cluster represent a coherent event pattern?"
+    )

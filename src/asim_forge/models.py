@@ -63,7 +63,10 @@ class ReviewTask(StrictModel):
     text: str
     cluster_id: str
     template: str
+    template_html: str
     event_count: int
+    representative_events_table: dict[str, object]
+    parameter_slots_table: dict[str, object]
     suggested_schema: str
     suggestion_confidence: float
     parameter_slots: list[dict[str, object]]
@@ -138,7 +141,6 @@ class CompileManifest(StrictModel):
     format_version: Literal["1"] = "1"
     cluster_count: int = Field(ge=1)
     review_count: int = Field(ge=1)
-    compiled_count: int = Field(ge=1)
+    compiled_count: int = Field(ge=0)
     skipped_reviews: dict[str, int]
     outputs: list[str]
-

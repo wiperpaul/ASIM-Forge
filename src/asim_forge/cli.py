@@ -61,8 +61,15 @@ def main(argv: Sequence[str] | None = None) -> None:
             )
         else:
             compile_manifest = compile_reviews(args.clusters, args.reviews, args.output)
-            print(
+            message = (
                 f"Compiled {compile_manifest.compiled_count} approved parser(s) in {args.output}"
             )
+            if compile_manifest.skipped_reviews:
+                skipped = ", ".join(
+                    f"{reason}={count}"
+                    for reason, count in compile_manifest.skipped_reviews.items()
+                )
+                message += f"; not compiled: {skipped}"
+            print(message)
     except (InputError, ReviewError, UnicodeError, ValueError) as error:
         parser.error(str(error))
