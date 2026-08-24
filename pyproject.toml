@@ -1,0 +1,70 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asim-forge"
+version = "0.1.0"
+description = "Human-supervised security log clustering and ASIM parser engineering"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+authors = [{ name = "Paul Wiper" }]
+requires-python = ">=3.11,<3.15"
+keywords = ["asim", "drain", "log-parsing", "microsoft-sentinel", "security"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+    "Topic :: System :: Logging",
+]
+dependencies = [
+    "deepparse-artifact @ git+https://github.com/NightBaRron1412/DeepParse.git@b53c29b379be5ab834ff990154297ef8fea8d98a",
+    "pydantic>=2.12,<3",
+    "PyYAML>=6.0,<7",
+]
+
+[project.optional-dependencies]
+review = ["potato-annotation>=2.7,<3"]
+dev = [
+    "mypy>=1.17",
+    "pytest>=8.4",
+    "pytest-cov>=6.2",
+    "ruff>=0.12",
+    "types-PyYAML>=6.0",
+]
+
+[project.scripts]
+asim-forge = "asim_forge.cli:main"
+
+[project.urls]
+Repository = "https://github.com/wiperpaul/ASIM-Forge"
+Issues = "https://github.com/wiperpaul/ASIM-Forge/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --basetemp=.pytest-tmp --cov=src/asim_forge --cov-report=term-missing"
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["deepparse", "deepparse.*"]
+ignore_missing_imports = true

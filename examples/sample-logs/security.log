@@ -1,0 +1,9 @@
+Demo gateway auth event login failed for user alice from 10.0.0.1 using password
+Demo gateway auth event login failed for user bob from 10.0.0.2 using password
+Demo gateway auth event login failed for user carol from 10.0.0.3 using password
+Demo gateway network event connection allowed from 10.0.0.4 to 192.0.2.10 destination port 443
+Demo gateway network event connection allowed from 10.0.0.5 to 192.0.2.10 destination port 443
+Demo gateway network event connection allowed from 10.0.0.6 to 192.0.2.20 destination port 8443
+Demo gateway audit event administrator alice updated policy RemoteAccess
+Demo gateway audit event administrator bob updated policy FirewallRules
+Demo gateway audit event administrator carol updated policy LegacyAccess

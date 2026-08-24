@@ -1,0 +1,12 @@
+ASIM Forge depends on the following third-party software.
+
+DeepParse: Hybrid Log Parsing with LLM-Synthesized Regex Masks
+Copyright its respective authors.
+https://github.com/NightBaRron1412/DeepParse
+Pinned commit: b53c29b379be5ab834ff990154297ef8fea8d98a (v1.0.0)
+License: Apache License 2.0
+
+Potato is an optional review dependency and is not vendored.
+https://github.com/davidjurgens/potato
+License: GNU General Public License v3.0 or later
+

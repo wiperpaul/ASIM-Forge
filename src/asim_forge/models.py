@@ -1,0 +1,144 @@
+"""Typed interchange records for the Milestone 1 workflow."""
+
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+AsimSchema = Literal["Authentication", "NetworkSession", "AuditEvent"]
+ReviewStatus = Literal["approved", "rejected", "needs_split", "insufficient_evidence"]
+Transform = Literal["string", "int", "long", "real", "datetime", "bool"]
+
+
+class StrictModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class SourceEvent(StrictModel):
+    source_file: str
+    line_number: int = Field(ge=1)
+    text: str = Field(min_length=1)
+
+
+class MaskDefinition(StrictModel):
+    label: str
+    pattern: str
+    justification: str = ""
+
+
+class ParameterSlot(StrictModel):
+    slot_id: str = Field(pattern=r"^p[1-9][0-9]*$")
+    label: str
+    placeholder: str
+    occurrence: int = Field(ge=1)
+    examples: list[str] = Field(default_factory=list)
+
+
+class SchemaScore(StrictModel):
+    schema_name: Literal["Authentication", "NetworkSession", "AuditEvent", "NoFit"]
+    score: int = Field(ge=0)
+    evidence: list[str] = Field(default_factory=list)
+
+
+class SchemaSuggestion(StrictModel):
+    schema_name: Literal["Authentication", "NetworkSession", "AuditEvent", "NoFit"]
+    confidence: float = Field(ge=0, le=1)
+    ranked_scores: list[SchemaScore]
+    method: Literal["keyword-baseline"] = "keyword-baseline"
+
+
+class ClusterRecord(StrictModel):
+    cluster_id: str
+    engine_cluster_id: int = Field(ge=1)
+    template: str
+    event_count: int = Field(ge=1)
+    representative_events: list[SourceEvent]
+    parameter_slots: list[ParameterSlot] = Field(default_factory=list)
+    schema_suggestion: SchemaSuggestion
+
+
+class ReviewTask(StrictModel):
+    id: str
+    text: str
+    cluster_id: str
+    template: str
+    event_count: int
+    suggested_schema: str
+    suggestion_confidence: float
+    parameter_slots: list[dict[str, object]]
+
+
+class FieldMapping(StrictModel):
+    slot_id: str = Field(pattern=r"^p[1-9][0-9]*$")
+    asim_field: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+    transform: Transform = "string"
+
+
+class ReviewDecision(StrictModel):
+    cluster_id: str
+    reviewer: str = Field(min_length=1)
+    status: ReviewStatus
+    schema_name: AsimSchema | None = None
+    parser_name: str | None = Field(default=None, pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+    vendor: str | None = None
+    product: str | None = None
+    source_table: str = Field(default="Syslog", pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+    message_field: str = Field(default="SyslogMessage", pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+    field_mappings: list[FieldMapping] = Field(default_factory=list)
+    notes: str = ""
+
+    @field_validator("schema_name", "parser_name", "vendor", "product")
+    @classmethod
+    def approved_values_cannot_be_blank(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("value cannot be blank")
+        return value
+
+
+class ParserSource(StrictModel):
+    vendor: str
+    product: str
+    table: str
+    message_field: str
+
+
+class ParserSpecification(StrictModel):
+    format_version: Literal["1"] = "1"
+    parser_name: str
+    cluster_id: str
+    schema_name: AsimSchema
+    template: str
+    source: ParserSource
+    field_mappings: list[FieldMapping]
+    reviewer: str
+    review_notes: str = ""
+
+
+class InputFile(StrictModel):
+    path: str
+    event_count: int = Field(ge=0)
+
+
+class BuildManifest(StrictModel):
+    format_version: Literal["1"] = "1"
+    system: str
+    engine: Literal["DeepParse"] = "DeepParse"
+    engine_revision: str
+    engine_mode: Literal["offline"] = "offline"
+    input_root: str
+    input_files: list[InputFile]
+    event_count: int = Field(ge=1)
+    cluster_count: int = Field(ge=1)
+    masks: list[MaskDefinition]
+    outputs: dict[str, str]
+
+
+class CompileManifest(StrictModel):
+    format_version: Literal["1"] = "1"
+    cluster_count: int = Field(ge=1)
+    review_count: int = Field(ge=1)
+    compiled_count: int = Field(ge=1)
+    skipped_reviews: dict[str, int]
+    outputs: list[str]
+
