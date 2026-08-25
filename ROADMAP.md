@@ -40,6 +40,9 @@ not generate KQL, and every generated artefact has deterministic provenance.
 Goal: after cluster approval, carry the reviewer directly into a prefilled ASIM
 suggestion without losing context or weakening the Stage 1 checkpoint.
 
+The architecture rationale and proposed evaluation boundary are recorded in
+[the semantic typing and schema matching research note](docs/semantic-mapping-research.md).
+
 ### Catalogue foundation
 
 - Retrieve the machine-readable field catalogue used by Microsoft's
