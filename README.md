@@ -18,6 +18,11 @@ Stage 1 decides only whether the examples form a coherent event pattern. Vendor/
 
 The stages are separate approval checkpoints, not necessarily separate human sessions. [The roadmap](ROADMAP.md) plans a progressive review that prepares an ASIM suggestion in advance and reveals it immediately after cluster approval, so an eligible reviewer can continue while the examples are still fresh or defer it to an ASIM specialist.
 
+Before selecting a semantic suggestion approach, the project defines
+[provider-neutral semantic mapping cases](docs/evaluation-fixtures.md). These cases
+separate source-event meaning from its expected ASIM projection and can be replayed
+unchanged through later baselines or model providers.
+
 ## Why DeepParse
 
 The clustering adapter uses [DeepParse v1.0.0](https://github.com/NightBaRron1412/DeepParse/tree/v1.0.0), pinned to commit `b53c29b379be5ab834ff990154297ef8fea8d98a`. Its repository describes an EASE 2026 mask-first approach: typed regex masks are synthesized once, then a deterministic Drain runtime handles each log line. The project is Apache-2.0 and includes a package, CLI, tests, CI, lockfile, and offline CPU mode.
@@ -41,6 +46,12 @@ uv run asim-forge compile `
   --output artifacts/demo/compiled
 
 uv run pytest
+```
+
+Validate the checked synthetic semantic-mapping case independently:
+
+```console
+uv run asim-forge evaluation validate examples/evaluation/semantic-mapping-cases.jsonl
 ```
 
 The checked-in decisions approve the Authentication and NetworkSession clusters and reject the AuditEvent cluster. The compile manifest therefore reports two generated parsers and one skipped review.
@@ -136,6 +147,11 @@ those descriptions or version numbers.
 
 - `asim-catalog.csv`: an unchanged, commit-pinned snapshot of Microsoft's tester catalogue.
 - `catalog-manifest.json`: source revision, integrity hash, and catalogue coverage.
+
+The checked `examples/evaluation/semantic-mapping-cases.jsonl` file demonstrates the
+provider-neutral evaluation contract. Real evaluation cases can contain sensitive
+event data and should remain under `artifacts/` or another explicitly ignored secure
+location.
 
 `asim-forge compile` writes one `*.parser-spec.json` and one `*.kql` per approved and fully mapped engineering review, plus `compile-manifest.json` recording generated, rejected, and awaiting-mapping decisions.
 
