@@ -144,15 +144,23 @@ def _to_specification(
     cluster: ClusterRecord,
     decision: ReviewDecision,
 ) -> ParserSpecification:
+    schema_name = decision.schema_name
+    parser_name = decision.parser_name
+    vendor = decision.vendor
+    product = decision.product
     required = {
-        "schema_name": decision.schema_name,
-        "parser_name": decision.parser_name,
-        "vendor": decision.vendor,
-        "product": decision.product,
+        "schema_name": schema_name,
+        "parser_name": parser_name,
+        "vendor": vendor,
+        "product": product,
     }
     missing = sorted(name for name, value in required.items() if value is None)
     if missing:
         raise ReviewError(f"Approved review {cluster.cluster_id} is missing: {', '.join(missing)}")
+    assert schema_name is not None
+    assert parser_name is not None
+    assert vendor is not None
+    assert product is not None
 
     available_slots = {slot.slot_id for slot in cluster.parameter_slots}
     mapped_slots = [mapping.slot_id for mapping in decision.field_mappings]
@@ -176,13 +184,13 @@ def _to_specification(
         )
 
     return ParserSpecification(
-        parser_name=decision.parser_name,  # type: ignore[arg-type]
+        parser_name=parser_name,
         cluster_id=cluster.cluster_id,
-        schema_name=decision.schema_name,  # type: ignore[arg-type]
+        schema_name=schema_name,
         template=cluster.template,
         source=ParserSource(
-            vendor=decision.vendor,  # type: ignore[arg-type]
-            product=decision.product,  # type: ignore[arg-type]
+            vendor=vendor,
+            product=product,
             table=decision.source_table,
             message_field=decision.message_field,
         ),

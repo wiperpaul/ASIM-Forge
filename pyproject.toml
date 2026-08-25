@@ -30,11 +30,14 @@ dependencies = [
 
 [project.optional-dependencies]
 review = ["potato-annotation>=2.7,<3"]
+
+[dependency-groups]
 dev = [
-    "mypy>=1.17",
+    "pre-commit>=4.6.2",
     "pytest>=8.4",
     "pytest-cov>=6.2",
     "ruff>=0.12",
+    "ty>=0.0.74",
     "types-PyYAML>=6.0",
 ]
 
@@ -57,14 +60,6 @@ select = ["E", "F", "I", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q --basetemp=.pytest-tmp --cov=src/asim_forge --cov-report=term-missing"
+addopts = "-q --cov=src/asim_forge --cov-report=term-missing"
 
-[tool.mypy]
-python_version = "3.11"
-check_untyped_defs = true
-warn_return_any = true
-warn_unused_configs = true
-
-[[tool.mypy.overrides]]
-module = ["deepparse", "deepparse.*"]
-ignore_missing_imports = true
+[tool.ty]

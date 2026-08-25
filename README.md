@@ -29,7 +29,7 @@ DeepParse is still a young project. ASIM Forge therefore confines it to `cluster
 Python 3.11+ and [uv](https://docs.astral.sh/uv/) are required.
 
 ```powershell
-uv sync --extra dev
+uv sync
 
 uv run asim-forge build examples/sample-logs `
   --output artifacts/demo `
@@ -44,6 +44,35 @@ uv run pytest
 ```
 
 The checked-in decisions approve the Authentication and NetworkSession clusters and reject the AuditEvent cluster. The compile manifest therefore reports two generated parsers and one skipped review.
+
+## Before opening a PR
+
+The CI checks are ordinary project commands and can be run directly from any shell:
+
+```console
+uv sync --locked
+uv run ruff format --check .
+uv run ruff check .
+uv run ty check
+uv run pytest
+```
+
+Enable the commit-time checks once after cloning:
+
+```console
+uv run pre-commit install
+```
+
+The hook keeps `uv.lock` synchronized, checks common repository hygiene, applies
+safe Ruff fixes and formatting, and runs ty across the project. Run every hook
+against the whole repository at any time with:
+
+```console
+uv run pre-commit run --all-files
+```
+
+GitHub Actions runs the same pre-commit checks for pull requests and pushes to
+`main`, with pytest covering every supported Python version from 3.11 through 3.14.
 
 ## Review with Potato
 

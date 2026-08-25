@@ -19,4 +19,3 @@ def test_reads_supported_files_in_stable_order(tmp_path: Path) -> None:
 def test_rejects_empty_folder(tmp_path: Path) -> None:
     with pytest.raises(InputError, match="No supported log files"):
         read_events(tmp_path)
-

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import re
 
-from .models import SchemaScore, SchemaSuggestion
+from .models import AsimSchema, SchemaScore, SchemaSuggestion
 
-_KEYWORDS: dict[str, tuple[str, ...]] = {
+_KEYWORDS: dict[AsimSchema, tuple[str, ...]] = {
     "Authentication": (
         "auth",
         "credential",
@@ -49,7 +49,7 @@ def suggest_schema(template: str) -> SchemaSuggestion:
         evidence = [word for word in keywords if _contains(normalized, word)]
         ranked.append(
             SchemaScore(
-                schema_name=schema_name,  # type: ignore[arg-type]
+                schema_name=schema_name,
                 score=len(evidence),
                 evidence=evidence,
             )
@@ -72,4 +72,3 @@ def _contains(text: str, keyword: str) -> bool:
     if " " in keyword:
         return keyword in text
     return re.search(rf"(?<![a-z0-9]){re.escape(keyword)}(?![a-z0-9])", text) is not None
-
