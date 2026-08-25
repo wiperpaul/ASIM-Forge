@@ -89,6 +89,9 @@ mapping rather than silently reusing stale work.
 
 ### Data and API changes
 
+- Use the versioned provider-neutral semantic mapping case contract as the common
+  gold format for baseline, retrieval, and model comparisons. Keep provider output
+  and confidence outside the gold cases.
 - Split the current combined review record into `ClusterDecision`,
   `SourceMetadata`, `AsimSuggestion`, and `AsimMappingDecision` records.
 - Link records with stable cluster and source IDs plus explicit revision IDs.

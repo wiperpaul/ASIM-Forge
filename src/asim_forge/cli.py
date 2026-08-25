@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .catalog import sync_catalog
 from .compiler import compile_reviews
+from .evaluation import EvaluationError, load_semantic_mapping_cases
 from .ingestion import InputError
 from .pipeline import build_review_bundle
 from .reviews import ReviewError
@@ -55,6 +56,20 @@ def build_parser() -> argparse.ArgumentParser:
         default="master",
         help="Azure-Sentinel branch, tag, or full commit SHA (default: master)",
     )
+
+    evaluation = subparsers.add_parser(
+        "evaluation",
+        help="Manage provider-neutral semantic mapping evaluation cases",
+    )
+    evaluation_subparsers = evaluation.add_subparsers(
+        dest="evaluation_command",
+        required=True,
+    )
+    evaluation_validate = evaluation_subparsers.add_parser(
+        "validate",
+        help="Validate canonical semantic mapping case JSONL",
+    )
+    evaluation_validate.add_argument("cases", type=Path, help="Semantic mapping case JSONL")
     return parser
 
 
@@ -88,12 +103,15 @@ def main(argv: Sequence[str] | None = None) -> None:
                 )
                 message += f"; not compiled: {skipped}"
             print(message)
-        else:
+        elif args.command == "catalog":
             catalog_manifest = sync_catalog(args.output, revision=args.revision)
             print(
                 f"Synced {catalog_manifest.schema_count} ASIM schemas and "
                 f"{catalog_manifest.field_count} field definitions from "
                 f"Azure-Sentinel@{catalog_manifest.resolved_revision} into {args.output}"
             )
-    except (InputError, ReviewError, UnicodeError, ValueError) as error:
+        else:
+            cases = load_semantic_mapping_cases(args.cases)
+            print(f"Validated {len(cases)} provider-neutral semantic mapping case(s)")
+    except (EvaluationError, InputError, ReviewError, UnicodeError, ValueError) as error:
         parser.error(str(error))
