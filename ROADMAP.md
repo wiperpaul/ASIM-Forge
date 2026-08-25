@@ -40,6 +40,21 @@ not generate KQL, and every generated artefact has deterministic provenance.
 Goal: after cluster approval, carry the reviewer directly into a prefilled ASIM
 suggestion without losing context or weakening the Stage 1 checkpoint.
 
+### Catalogue foundation
+
+- Retrieve the machine-readable field catalogue used by Microsoft's
+  `ASimSchemaTester` from the Azure-Sentinel repository instead of maintaining a
+  local copy of ASIM field definitions.
+- Resolve branches and tags to an immutable Git commit and record both that commit
+  and the downloaded content hash in a generated snapshot manifest.
+- Preserve Microsoft's CSV unchanged in the snapshot; parse it into typed fields
+  only at the ASIM Forge boundary.
+- Merge `Common` fields with schema-specific overrides when presenting a target
+  schema to suggestion providers.
+- Treat human-readable descriptions and semantic schema versions as separately
+  versioned upstream documentation. Add them through an enrichment adapter rather
+  than embedding or hand-maintaining them in the core catalogue.
+
 ### Preparation before review
 
 - Import vendor, product, source table, and message field from a source-onboarding

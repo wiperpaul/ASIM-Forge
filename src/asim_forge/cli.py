@@ -6,6 +6,7 @@ import argparse
 from collections.abc import Sequence
 from pathlib import Path
 
+from .catalog import sync_catalog
 from .compiler import compile_reviews
 from .ingestion import InputError
 from .pipeline import build_review_bundle
@@ -38,6 +39,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Canonical review JSONL or a Potato user_state.json",
     )
     compile_parser.add_argument("--output", type=Path, default=Path("artifacts/compiled"))
+
+    catalog = subparsers.add_parser(
+        "catalog",
+        help="Manage the versioned upstream ASIM field catalogue",
+    )
+    catalog_subparsers = catalog.add_subparsers(dest="catalog_command", required=True)
+    catalog_sync = catalog_subparsers.add_parser(
+        "sync",
+        help="Retrieve Microsoft's ASimSchemaTester catalogue at an immutable revision",
+    )
+    catalog_sync.add_argument("--output", type=Path, default=Path("artifacts/asim-catalog"))
+    catalog_sync.add_argument(
+        "--revision",
+        default="master",
+        help="Azure-Sentinel branch, tag, or full commit SHA (default: master)",
+    )
     return parser
 
 
@@ -59,7 +76,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 f"{build_manifest.event_count} events "
                 f"in {args.output}"
             )
-        else:
+        elif args.command == "compile":
             compile_manifest = compile_reviews(args.clusters, args.reviews, args.output)
             message = (
                 f"Compiled {compile_manifest.compiled_count} approved parser(s) in {args.output}"
@@ -71,5 +88,12 @@ def main(argv: Sequence[str] | None = None) -> None:
                 )
                 message += f"; not compiled: {skipped}"
             print(message)
+        else:
+            catalog_manifest = sync_catalog(args.output, revision=args.revision)
+            print(
+                f"Synced {catalog_manifest.schema_count} ASIM schemas and "
+                f"{catalog_manifest.field_count} field definitions from "
+                f"Azure-Sentinel@{catalog_manifest.resolved_revision} into {args.output}"
+            )
     except (InputError, ReviewError, UnicodeError, ValueError) as error:
         parser.error(str(error))
