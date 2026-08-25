@@ -67,6 +67,33 @@ Potato presents the template, representative events, and extracted slots as sepa
 
 Canonical engineering-review JSONL is accepted for reproducible compiler tests, source control, and integration with the later mapping UI. See `examples/sample-review/reviews.jsonl` for the complete contract.
 
+## Sync the ASIM catalogue
+
+Stage 2 uses the machine-readable field catalogue consumed by Microsoft's own
+`ASimSchemaTester`; ASIM Forge does not maintain a copied list of ASIM fields.
+Syncing resolves the requested Azure-Sentinel ref to an immutable commit before
+retrieving the catalogue:
+
+```powershell
+uv run asim-forge catalog sync `
+  --output artifacts/asim-catalog `
+  --revision master
+```
+
+The snapshot contains the unchanged upstream `ASimTester.csv` and a
+`catalog-manifest.json` recording the requested ref, resolved 40-character commit,
+content SHA-256, supported schemas, and field count. Use the resolved commit from
+that manifest as `--revision` to reproduce the exact catalogue without resolving a
+moving branch again. `GITHUB_TOKEN` is used when present but is not required for a
+public, low-volume sync.
+
+The cached snapshot is a generated input and remains under `artifacts/`; it is not
+a maintained fork of Microsoft's catalogue. The upstream CSV supplies field names,
+KQL types, field classes, logical types, enumerations, aliases, and dynamic types.
+Human-readable schema guidance and semantic schema-version enrichment remain a
+separate upstream documentation concern because the tester CSV does not contain
+those descriptions or version numbers.
+
 ## Artefacts
 
 `asim-forge build` writes:
@@ -76,6 +103,11 @@ Canonical engineering-review JSONL is accepted for reproducible compiler tests, 
 - `potato/items.jsonl`: one task per cluster.
 - `potato/config.yaml`: a portable Potato configuration.
 
+`asim-forge catalog sync` writes:
+
+- `asim-catalog.csv`: an unchanged, commit-pinned snapshot of Microsoft's tester catalogue.
+- `catalog-manifest.json`: source revision, integrity hash, and catalogue coverage.
+
 `asim-forge compile` writes one `*.parser-spec.json` and one `*.kql` per approved and fully mapped engineering review, plus `compile-manifest.json` recording generated, rejected, and awaiting-mapping decisions.
 
 Operational logs, generated artefacts, and Potato annotation state are ignored by Git by default because they may contain sensitive security data.
@@ -84,7 +116,7 @@ Operational logs, generated artefacts, and Potato annotation state are ignored b
 
 The KQL files are reviewable candidates, not production-ready Sentinel releases. Milestone 1 does not yet:
 
-- validate mappings against a pinned ASIM catalogue;
+- use the synced catalogue to generate and validate mapping suggestions;
 - provide the later source-metadata and ASIM-mapping review interface;
 - run ASIM schema or data testers;
 - execute KQL against a Sentinel workspace;

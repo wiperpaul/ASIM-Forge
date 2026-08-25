@@ -144,3 +144,47 @@ class CompileManifest(StrictModel):
     compiled_count: int = Field(ge=0)
     skipped_reviews: dict[str, int]
     outputs: list[str]
+
+
+AsimFieldClass = Literal["Mandatory", "Recommended", "Optional", "Conditional", "Alias"]
+
+
+class AsimCatalogField(StrictModel):
+    name: str = Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$")
+    kql_type: str = Field(pattern=r"^[A-Za-z][A-Za-z0-9]*$")
+    field_class: AsimFieldClass
+    schema_name: str = Field(pattern=r"^[A-Za-z][A-Za-z0-9]*$")
+    logical_type: str | None = None
+    allowed_values: list[str] = Field(default_factory=list)
+    aliased_field: str | None = None
+    dynamic_type: str | None = None
+    array_values_type: str | None = None
+
+
+class AsimCatalogManifest(StrictModel):
+    format_version: Literal["1"] = "1"
+    source_repository: str
+    source_path: str
+    requested_revision: str
+    resolved_revision: str = Field(pattern=r"^[0-9a-f]{40}$")
+    content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    schema_count: int = Field(ge=1)
+    field_count: int = Field(ge=1)
+    schemas: list[str] = Field(min_length=1)
+
+
+class AsimCatalog(StrictModel):
+    manifest: AsimCatalogManifest
+    fields: list[AsimCatalogField]
+
+    def fields_for_schema(self, schema_name: str) -> list[AsimCatalogField]:
+        if schema_name not in self.manifest.schemas:
+            raise ValueError(f"Unknown ASIM schema: {schema_name}")
+        schema_fields = [field for field in self.fields if field.schema_name == schema_name]
+        overridden_names = {field.name for field in schema_fields}
+        common_fields = [
+            field
+            for field in self.fields
+            if field.schema_name == "Common" and field.name not in overridden_names
+        ]
+        return [*common_fields, *schema_fields]
