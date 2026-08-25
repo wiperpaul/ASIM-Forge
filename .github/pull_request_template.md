@@ -4,7 +4,7 @@
 
 ## What changed
 
-- 
+-
 
 ## Validation
 
@@ -24,4 +24,3 @@
 - [ ] New or changed behaviour has test coverage where practical
 - [ ] Generated artefacts, logs, and sensitive event data are not committed
 - [ ] Documentation is updated where needed
-

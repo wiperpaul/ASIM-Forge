@@ -14,4 +14,3 @@ def test_returns_no_fit_without_evidence() -> None:
 
     assert suggestion.schema_name == "NoFit"
     assert suggestion.confidence == 0
-
