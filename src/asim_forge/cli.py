@@ -6,12 +6,14 @@ import argparse
 from collections.abc import Sequence
 from pathlib import Path
 
-from .catalog import sync_catalog
+from .catalog import load_catalog, sync_catalog
 from .compiler import compile_reviews
 from .evaluation import EvaluationError, load_semantic_mapping_cases
 from .ingestion import InputError
 from .pipeline import build_review_bundle
 from .reviews import ReviewError
+from .semantic_mapping import APPROACH_NAMES
+from .semantic_mapping.comparison import compare_approaches, write_comparison_report
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -70,6 +72,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Validate canonical semantic mapping case JSONL",
     )
     evaluation_validate.add_argument("cases", type=Path, help="Semantic mapping case JSONL")
+    evaluation_compare = evaluation_subparsers.add_parser(
+        "compare",
+        help="Compare separated semantic mapping approaches against the same cases",
+    )
+    evaluation_compare.add_argument("cases", type=Path, help="Semantic mapping case JSONL")
+    evaluation_compare.add_argument(
+        "--catalog",
+        type=Path,
+        required=True,
+        help="Directory containing a pinned ASIM catalogue snapshot",
+    )
+    evaluation_compare.add_argument(
+        "--approach",
+        action="append",
+        choices=APPROACH_NAMES,
+        dest="approaches",
+        help="Approach to compare; repeat to select several (default: all)",
+    )
+    evaluation_compare.add_argument(
+        "--output",
+        type=Path,
+        help="Optional path for the complete JSON comparison report",
+    )
     return parser
 
 
@@ -110,8 +135,37 @@ def main(argv: Sequence[str] | None = None) -> None:
                 f"{catalog_manifest.field_count} field definitions from "
                 f"Azure-Sentinel@{catalog_manifest.resolved_revision} into {args.output}"
             )
-        else:
+        elif args.evaluation_command == "validate":
             cases = load_semantic_mapping_cases(args.cases)
             print(f"Validated {len(cases)} provider-neutral semantic mapping case(s)")
+        else:
+            cases = load_semantic_mapping_cases(args.cases)
+            report = compare_approaches(
+                cases,
+                load_catalog(args.catalog),
+                args.approaches,
+            )
+            if args.output is not None:
+                write_comparison_report(args.output, report)
+            print(
+                "approach          schema@1  schema@3  field-f1  field-mrr  "
+                "field-r@gt  role-f1  exact  coverage  edits"
+            )
+            for evaluation in report.approaches:
+                metrics = evaluation.metrics
+                print(
+                    f"{evaluation.approach.name:<17} "
+                    f"{metrics.schema_top1_accuracy:>8.3f}  "
+                    f"{metrics.schema_top3_hit_rate:>8.3f}  "
+                    f"{metrics.field_micro_f1:>8.3f}  "
+                    f"{metrics.field_mrr:>9.3f}  "
+                    f"{metrics.field_recall_at_gold:>10.3f}  "
+                    f"{metrics.source_micro_f1:>7.3f}  "
+                    f"{metrics.mapping_exact_match:>5.3f}  "
+                    f"{metrics.coverage:>8.3f}  "
+                    f"{metrics.mean_mapping_edits:>5.2f}"
+                )
+                for warning in evaluation.warnings:
+                    print(f"  warning: {warning}")
     except (EvaluationError, InputError, ReviewError, UnicodeError, ValueError) as error:
         parser.error(str(error))

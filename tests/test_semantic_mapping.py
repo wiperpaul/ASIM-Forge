@@ -2,11 +2,20 @@ from pathlib import Path
 
 import pytest
 
+from asim_forge import cli
 from asim_forge.evaluation import SemanticMappingCase, load_semantic_mapping_cases
+from asim_forge.models import AsimCatalog, AsimCatalogField, AsimCatalogManifest
+from asim_forge.semantic_mapping.comparison import (
+    ComparisonError,
+    compare_approaches,
+    write_comparison_report,
+)
 from asim_forge.semantic_mapping.contracts import (
     MappingRequest,
     SemanticMappingPrediction,
 )
+from asim_forge.semantic_mapping.direct import DirectLexicalApproach
+from asim_forge.semantic_mapping.frame import SemanticFrameApproach
 from asim_forge.semantic_mapping.metrics import EvaluationError, evaluate_predictions
 
 EXAMPLE_CASES = Path("examples/evaluation/semantic-mapping-cases.jsonl")
@@ -52,6 +61,53 @@ def _prediction_payload() -> dict[str, object]:
             }
         ],
     }
+
+
+def _catalog() -> AsimCatalog:
+    case = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
+    fields = [
+        AsimCatalogField(
+            name="EventResult",
+            kql_type="string",
+            field_class="Recommended",
+            schema_name="Common",
+            logical_type="Event result",
+        ),
+        AsimCatalogField(
+            name="SrcIpAddr",
+            kql_type="string",
+            field_class="Recommended",
+            schema_name="NetworkSession",
+            logical_type="IP Address",
+        ),
+        AsimCatalogField(
+            name="DstIpAddr",
+            kql_type="string",
+            field_class="Recommended",
+            schema_name="NetworkSession",
+            logical_type="IP Address",
+        ),
+        AsimCatalogField(
+            name="DstPortNumber",
+            kql_type="int",
+            field_class="Recommended",
+            schema_name="NetworkSession",
+            logical_type="Port Number",
+        ),
+    ]
+    return AsimCatalog(
+        manifest=AsimCatalogManifest(
+            source_repository="https://github.com/Azure/Azure-Sentinel",
+            source_path="ASIM/dev/ASimTester/ASimTester.csv",
+            requested_revision=case.catalogue_revision,
+            resolved_revision=case.catalogue_revision,
+            content_sha256="0" * 64,
+            schema_count=1,
+            field_count=len(fields),
+            schemas=["NetworkSession"],
+        ),
+        fields=fields,
+    )
 
 
 def test_request_contains_no_expected_labels() -> None:
@@ -230,3 +286,100 @@ def test_correct_empty_labels_receive_full_case_level_f1() -> None:
 
     assert metrics.source_macro_f1 == 1
     assert metrics.field_macro_f1 == 1
+
+
+def test_direct_lexical_approach_maps_slots_without_source_frame() -> None:
+    prediction = DirectLexicalApproach().predict(_request(), _catalog())
+
+    assert prediction.disposition == "mapped"
+    assert prediction.ranked_schemas[0].schema_name == "NetworkSession"
+    assert prediction.source_semantics == []
+    assert {(field.locator, field.asim_field) for field in prediction.asim_fields} == {
+        ("p1", "SrcIpAddr"),
+        ("p2", "DstIpAddr"),
+        ("p3", "DstPortNumber"),
+    }
+
+
+def test_semantic_frame_approach_maps_slots_and_static_meaning() -> None:
+    prediction = SemanticFrameApproach().predict(_request(), _catalog())
+
+    assert {(semantic.locator, semantic.role) for semantic in prediction.source_semantics} == {
+        ("p1", "network.source.address"),
+        ("p2", "network.destination.address"),
+        ("p3", "network.destination.port"),
+        ("connection allowed", "network.connection.allowed"),
+    }
+    event_result = next(
+        field for field in prediction.asim_fields if field.asim_field == "EventResult"
+    )
+    assert event_result.source_kind == "template_constant"
+    assert event_result.constant_value == "Success"
+
+
+def test_comparison_reports_both_deterministic_baselines() -> None:
+    case = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
+
+    report = compare_approaches([case], _catalog())
+
+    evaluations = {evaluation.approach.name: evaluation for evaluation in report.approaches}
+    direct = evaluations["direct-lexical"].metrics
+    frame = evaluations["semantic-frame"].metrics
+    assert set(evaluations) == {"direct-lexical", "semantic-frame"}
+    assert direct.schema_top1_accuracy == 1
+    assert direct.field_micro_recall == 0.75
+    assert direct.source_micro_f1 == 0
+    assert frame.mapping_exact_match == 1
+    assert frame.full_exact_match == 1
+    assert any("smoke test" in warning for warning in evaluations["semantic-frame"].warnings)
+
+
+def test_comparison_rejects_catalogue_revision_drift() -> None:
+    case = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
+    catalog = _catalog()
+    catalog.manifest.resolved_revision = "f" * 40
+
+    with pytest.raises(ComparisonError, match="loaded catalogue revision"):
+        compare_approaches([case], catalog)
+
+
+def test_writes_reproducible_comparison_report(tmp_path: Path) -> None:
+    case = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
+    report = compare_approaches([case], _catalog(), ["semantic-frame"])
+    output = tmp_path / "comparison.json"
+
+    write_comparison_report(output, report)
+
+    text = output.read_text(encoding="utf-8")
+    assert text.endswith("\n")
+    assert '"field_recall_at_gold": 1.0' in text
+    assert '"name": "semantic-frame"' in text
+
+
+def test_cli_compares_a_selected_approach(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(cli, "load_catalog", lambda _: _catalog())
+    output = tmp_path / "comparison.json"
+
+    cli.main(
+        [
+            "evaluation",
+            "compare",
+            str(EXAMPLE_CASES),
+            "--catalog",
+            "unused-by-test",
+            "--approach",
+            "semantic-frame",
+            "--output",
+            str(output),
+        ]
+    )
+
+    stdout = capsys.readouterr().out
+    assert "field-r@gt" in stdout
+    assert "semantic-frame" in stdout
+    assert "direct-lexical" not in stdout
+    assert output.is_file()

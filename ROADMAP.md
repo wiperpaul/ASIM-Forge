@@ -69,6 +69,9 @@ The architecture rationale and proposed evaluation boundary are recorded in
 - Store method/version, confidence, evidence, and unresolved warnings with the
   suggestion. A low-confidence suggestion is still useful as a draft, not as an
   approval.
+- Compare direct lexical and source-frame baselines through the same prediction
+  contract and evaluation harness before selecting a production suggestion
+  provider.
 
 ### Progressive review experience
 
