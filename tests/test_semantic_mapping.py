@@ -7,6 +7,7 @@ from asim_forge.semantic_mapping.contracts import (
     MappingRequest,
     SemanticMappingPrediction,
 )
+from asim_forge.semantic_mapping.metrics import EvaluationError, evaluate_predictions
 
 EXAMPLE_CASES = Path("examples/evaluation/semantic-mapping-cases.jsonl")
 
@@ -147,3 +148,32 @@ def test_not_applicable_prediction_cannot_contain_targets() -> None:
 
     with pytest.raises(ValueError, match="cannot contain ASIM targets"):
         SemanticMappingPrediction.model_validate(payload)
+
+
+def test_metrics_score_rankings_sets_exactness_and_edits_independently() -> None:
+    case = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
+    prediction = SemanticMappingPrediction.model_validate(_prediction_payload())
+
+    metrics = evaluate_predictions([case], [prediction])
+
+    assert metrics.schema_top1_accuracy == 1
+    assert metrics.schema_mrr == 1
+    assert metrics.source_micro_precision == 1
+    assert metrics.source_micro_recall == 0.25
+    assert metrics.source_micro_f1 == 0.4
+    assert metrics.field_micro_precision == 1
+    assert metrics.field_micro_recall == 0.25
+    assert metrics.field_mrr == 0.25
+    assert metrics.field_recall_at_gold == 0.25
+    assert metrics.mapping_exact_match == 0
+    assert metrics.mean_mapping_edits == 3
+
+
+def test_metrics_require_predictions_for_the_exact_case_set() -> None:
+    case = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
+    payload = _prediction_payload()
+    payload["case_id"] = "different-case"
+    prediction = SemanticMappingPrediction.model_validate(payload)
+
+    with pytest.raises(EvaluationError, match="cover exactly"):
+        evaluate_predictions([case], [prediction])
