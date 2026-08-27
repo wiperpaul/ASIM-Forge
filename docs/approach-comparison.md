@@ -8,11 +8,11 @@ provider-neutral case input + pinned ASIM catalogue
                          |
                 MappingRequest
                          |
-       +-----------------+
-       |                 |
- direct-lexical    semantic-frame
-       |                 |
-       +-----------------+
+       +-----------------+------------------+
+       |                 |                  |
+ direct-lexical    semantic-frame     case-retrieval
+       |                 |                  |
+       +-----------------+------------------+
                          |
            SemanticMappingPrediction
                          |
@@ -29,6 +29,7 @@ identity, rankings, scores, evidence, and warnings live in
 | --- | --- | --- |
 | `direct-lexical` | `semantic_mapping/approaches/direct_lexical/` | A deliberately cheap benchmark that ranks catalogue fields directly from local slot context. It does not emit source-semantic roles or infer important constants. |
 | `semantic-frame` | `semantic_mapping/approaches/semantic_frame/` | A two-stage benchmark that first names source roles and static meanings, then projects them into the catalogue. Its small lexical normalizers are evaluation baselines, not production vendor rules. |
+| `case-retrieval` | `semantic_mapping/approaches/case_retrieval/` | Retrieves similar labelled cases and transfers their schema, source roles, and target mappings. It excludes the current case by stable case ID, preventing direct target-label leakage. |
 
 Each approach owns a package under `semantic_mapping/approaches/`. Shared
 tokenization and catalogue-ranking primitives live in the private
@@ -79,3 +80,8 @@ A useful dataset should:
 4. report per-schema and minority-role results in addition to micro averages;
 5. run each ablation against the exact same cases and catalogue revision;
 6. later add parser execution and security-query precision/recall.
+
+Case retrieval currently uses leave-one-out evaluation because there is no train/test
+manifest yet. It is safe from same-case leakage but not from near-duplicate templates.
+A grouped split manifest is therefore the next dataset task before drawing conclusions
+from retrieval performance.

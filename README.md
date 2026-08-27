@@ -54,8 +54,8 @@ Validate the checked synthetic semantic-mapping case independently:
 uv run asim-forge evaluation validate examples/evaluation/semantic-mapping-cases.jsonl
 ```
 
-Once the matching catalogue revision is synced, compare the separated direct and
-source-frame baselines against exactly the same cases:
+Once the matching catalogue revision is synced, compare the separated direct,
+source-frame, and retrieval baselines against exactly the same cases:
 
 ```powershell
 uv run asim-forge evaluation compare `

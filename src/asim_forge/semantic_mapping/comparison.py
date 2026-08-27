@@ -63,7 +63,7 @@ def compare_approaches(
 
     evaluations: list[ApproachEvaluation] = []
     for name in names:
-        approach = build_approach(name)
+        approach = build_approach(name, reference_cases=cases)
         predictions: list[SemanticMappingPrediction] = []
         for case in cases:
             predictions.append(
