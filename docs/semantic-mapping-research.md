@@ -1,7 +1,7 @@
 # Semantic typing and schema matching research note
 
 Status: working architecture note
-Last reviewed: 2026-08-26
+Last reviewed: 2026-08-29
 
 ## Question
 
@@ -107,6 +107,45 @@ validation are separable concerns.
 | [OntoLogX (Advanced Intelligent Systems, 2026)](https://advanced.onlinelibrary.wiley.com/doi/10.1002/aisy.202501381) | Builds ontology-grounded event graphs with retrieval and iterative correction before aggregating them into sessions | A compact event frame such as actor-action-target-result is a plausible intermediate representation; a full knowledge-graph platform is not required to test the idea. |
 | [MicLog (AAAI 2026)](https://ojs.aaai.org/index.php/AAAI/article/view/37123) | Uses clustered examples, retrieval of demonstrations, and caching with a small model for log parsing | Curated approved cases may be more useful as retrieval memory than as immediately compiled hand-written rules. |
 | [DeepParse (2026 preprint)](https://arxiv.org/abs/2604.20553) | Synthesizes reusable regex masks with an LLM and retains deterministic parsing at runtime | Reinforces the generation-time intelligence/runtime determinism boundary already used by the project; it does not by itself solve ASIM semantics. |
+| [Elastic Streams experiment (Elastic Observability Labs, 2026)](https://www.elastic.co/observability-labs/blog/automated-log-parsing-ml-streams) | Uses deterministic log-format fingerprints, hierarchical grouping, and diversity-aware sampling before asking an LLM to generate parsing rules | Supports deterministic compression and representative-example selection before model use. Its parsing and source-partitioning results do not establish ASIM schema or field-mapping accuracy. |
+
+### Industry experiment: Elastic Streams
+
+Elastic reports 94% parsing accuracy and 91% log-partitioning accuracy on its
+Loghub experiment. The result is useful engineering evidence, but the article is
+not a peer-reviewed evaluation and does not define enough of the metric,
+prompt, model version, repeated-run variance, or held-out split to make those
+numbers a comparable benchmark for ASIM Forge. A random 20% sample from each
+data source may also allow closely related formats to appear in both generation
+and evaluation data. Treat the figures as motivation for an experiment, not an
+expected performance level.
+
+Four observations are directly relevant:
+
+- **Sample diversity matters more than raw sample count.** Elastic observed
+  brittle overspecification with homogeneous examples and confused,
+  over-general output with excessively heterogeneous examples. Its stratified
+  fingerprint sampling is a concrete alternative to taking the first or most
+  frequent events from a cluster.
+- **Deterministic structure can compress model context.** Exact fingerprints
+  form subclasses and fingerprint prefixes form broader groups before model
+  invocation. This is consistent with keeping deterministic clustering and
+  candidate preparation outside the semantic provider.
+- **Open-ended names drift.** Elastic observed source- and field-name variation
+  between runs and normalized the outputs afterward. ASIM Forge should instead
+  constrain schema and field outputs to the pinned catalogue and preserve the
+  ranked candidates that led to the choice.
+- **Outlier removal has a security cost.** Elastic drops fingerprint subclasses
+  below 5% of volume to protect parsing quality. Rare security events may be the
+  most important events, so ASIM Forge must never silently discard them. Low
+  coverage should produce an explicit outlier, abstention, or human-review path.
+
+The immediate experiment is therefore not to replace DeepParse or add an LLM
+framework. Compare the existing representative-event selection with a small
+fingerprint-stratified selector. Measure template/slot coverage, downstream
+mapping accuracy, prompt size, reviewer edit rate, and rare-event retention.
+Keep the selector behind the same provider-neutral fixture and report results
+separately for clustering, source-role inference, and ASIM projection.
 
 There is also a security reason to keep that boundary. A [USENIX Security 2026
 study of prompt injection through log data](https://www.usenix.org/conference/usenixsecurity26/presentation/karanjai)
@@ -224,13 +263,18 @@ Before choosing a production semantic implementation:
 2. Add a cheap catalogue/type/lexical direct-mapping baseline only as a benchmark.
 3. Compare direct mapping with a minimal source-frame-then-ASIM pipeline and
    retrieval from approved cases. These can all be deterministic initially.
-4. Measure source-role accuracy, schema top-1/top-3, field precision@1,
+4. Compare the existing representative-event selection with deterministic
+   fingerprint-stratified selection; retain rare subclasses as outliers rather
+   than dropping them.
+5. Measure source-role accuracy, schema top-1/top-3, field precision@1,
    reciprocal rank, abstention
-   coverage, exact cluster completion, reviewer edit rate, and review time.
-5. Split fixtures by source or template family to expose distribution shift.
-6. Later replay the identical fixtures through one model provider, first only on
+   coverage, exact cluster completion, reviewer edit rate, review time, prompt
+   size, and rare-event retention.
+6. Split fixtures by source or template family to expose distribution shift and
+   prevent near-duplicate formats from leaking across the evaluation boundary.
+7. Later replay the identical fixtures through one model provider, first only on
    uncertain candidate pairs.
-7. Add a signal or second stage only when its ablation improves the intended
+8. Add a signal or second stage only when its ablation improves the intended
    precision/coverage or reviewer-time metric.
 
 This postpones the expensive semantic-rule feedback cycle without blocking the
