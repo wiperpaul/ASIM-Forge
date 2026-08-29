@@ -48,6 +48,18 @@ def evaluate_predictions(
         raise EvaluationError("Prediction case IDs must be unique")
     if set(predictions_by_id) != {case.case_id for case in cases}:
         raise EvaluationError("Predictions must cover exactly the evaluated case IDs")
+    approaches = {
+        (prediction.approach.name, prediction.approach.version) for prediction in predictions
+    }
+    if len(approaches) != 1:
+        raise EvaluationError("Predictions must come from one approach name and version")
+    for case in cases:
+        prediction = predictions_by_id[case.case_id]
+        if prediction.catalogue_revision != case.catalogue_revision:
+            raise EvaluationError(
+                f"Prediction {case.case_id!r} uses catalogue revision "
+                f"{prediction.catalogue_revision!r}, expected {case.catalogue_revision!r}"
+            )
 
     disposition_correct = 0
     mapped_predictions = 0
@@ -240,6 +252,8 @@ def _field_recall_at_ground_truth(
 
 
 def _set_scores(expected: set[Any], predicted: set[Any]) -> tuple[int, int, int, float]:
+    if not expected and not predicted:
+        return 0, 0, 0, 1.0
     tp = len(expected & predicted)
     fp = len(predicted - expected)
     fn = len(expected - predicted)

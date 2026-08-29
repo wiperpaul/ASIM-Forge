@@ -19,6 +19,11 @@ The report includes:
 | Coverage and disposition accuracy | Makes abstention visible rather than allowing difficult cases to disappear from precision. |
 | Mean mapping edits | Counts a schema correction plus missing and extra field mappings as a rough reviewer-work proxy. |
 
+Every aggregate contains predictions from exactly one approach name and version.
+Each prediction must match its case ID and immutable catalogue revision. Correctly
+empty source and field sets receive full case-level F1, while false-positive labels
+on an empty case still receive zero.
+
 The ranking measures follow the evaluation shape used by
 [Magneto](https://www.vldb.org/pvldb/vol18/p2681-freire.pdf). Micro-F1 and macro-F1
 follow common semantic-annotation reporting, including
