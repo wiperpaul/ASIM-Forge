@@ -2,18 +2,31 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Literal, Protocol
 
 from pydantic import Field, model_validator
 
-from ..evaluation import (
+from ..models import AsimCatalog, StrictModel
+from .types import (
     AsimName,
     Identifier,
+    Locator,
     MappingDisposition,
+    NonBlankText,
     SemanticMappingInput,
+    SemanticRole,
     SourceKind,
 )
-from ..models import AsimCatalog, StrictModel
+
+
+def _scores_are_descending(
+    candidates: Sequence[RankedSchemaCandidate | RankedFieldCandidate],
+) -> bool:
+    return all(
+        candidate.score >= next_candidate.score
+        for candidate, next_candidate in zip(candidates, candidates[1:], strict=False)
+    )
 
 
 class MappingRequest(StrictModel):
@@ -26,7 +39,7 @@ class MappingRequest(StrictModel):
 
 class ApproachIdentity(StrictModel):
     name: Identifier
-    version: str = Field(min_length=1)
+    version: NonBlankText
 
 
 class RankedSchemaCandidate(StrictModel):
@@ -43,15 +56,15 @@ class RankedFieldCandidate(StrictModel):
 
 class PredictedSourceSemantic(StrictModel):
     source_kind: SourceKind
-    locator: str = Field(min_length=1)
-    role: str = Field(min_length=1)
+    locator: Locator
+    role: SemanticRole
     score: float = Field(ge=0, le=1)
     evidence: list[str] = Field(default_factory=list)
 
 
 class PredictedAsimField(StrictModel):
     source_kind: SourceKind
-    locator: str = Field(min_length=1)
+    locator: Locator
     asim_field: AsimName
     constant_value: str | int | float | bool | None = None
     score: float = Field(ge=0, le=1)
@@ -62,9 +75,13 @@ class PredictedAsimField(StrictModel):
     def selected_field_must_head_ranking(self) -> PredictedAsimField:
         if self.ranked_candidates[0].asim_field != self.asim_field:
             raise ValueError("selected ASIM field must be the first ranked candidate")
+        if self.ranked_candidates[0].score != self.score:
+            raise ValueError("selected ASIM field score must match the first ranked candidate")
         names = [candidate.asim_field for candidate in self.ranked_candidates]
         if len(names) != len(set(names)):
             raise ValueError("ranked ASIM field candidates must be unique")
+        if not _scores_are_descending(self.ranked_candidates):
+            raise ValueError("ranked ASIM field candidate scores must be descending")
         return self
 
 
@@ -86,6 +103,8 @@ class SemanticMappingPrediction(StrictModel):
         schema_names = [candidate.schema_name for candidate in self.ranked_schemas]
         if len(schema_names) != len(set(schema_names)):
             raise ValueError("ranked schema candidates must be unique")
+        if not _scores_are_descending(self.ranked_schemas):
+            raise ValueError("ranked schema candidate scores must be descending")
         if self.disposition == "mapped":
             if not self.ranked_schemas:
                 raise ValueError("mapped predictions require a schema candidate")
@@ -102,7 +121,8 @@ class SemanticMappingPrediction(StrictModel):
         if len(semantic_keys) != len(set(semantic_keys)):
             raise ValueError("predicted source semantics must be unique")
         field_keys = [
-            (field.source_kind, field.locator, field.asim_field) for field in self.asim_fields
+            (field.source_kind, field.locator.casefold(), field.asim_field)
+            for field in self.asim_fields
         ]
         if len(field_keys) != len(set(field_keys)):
             raise ValueError("predicted source and ASIM field combinations must be unique")

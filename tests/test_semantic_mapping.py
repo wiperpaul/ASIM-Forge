@@ -78,6 +78,37 @@ def test_selected_field_must_head_its_candidate_ranking() -> None:
         SemanticMappingPrediction.model_validate(payload)
 
 
+def test_selected_field_score_must_match_first_candidate() -> None:
+    payload = _prediction_payload()
+    fields = payload["asim_fields"]
+    assert isinstance(fields, list)
+    fields[0]["score"] = 0.75
+
+    with pytest.raises(ValueError, match="score must match the first ranked candidate"):
+        SemanticMappingPrediction.model_validate(payload)
+
+
+def test_candidate_scores_must_be_descending() -> None:
+    payload = _prediction_payload()
+    fields = payload["asim_fields"]
+    assert isinstance(fields, list)
+    fields[0]["score"] = 0.5
+    fields[0]["ranked_candidates"][0]["score"] = 0.5
+    fields[0]["ranked_candidates"][1]["score"] = 0.75
+
+    with pytest.raises(ValueError, match="field candidate scores must be descending"):
+        SemanticMappingPrediction.model_validate(payload)
+
+    payload = _prediction_payload()
+    schemas = payload["ranked_schemas"]
+    assert isinstance(schemas, list)
+    schemas[0]["score"] = 0.5
+    schemas.append({"schema_name": "Authentication", "score": 0.75})
+
+    with pytest.raises(ValueError, match="schema candidate scores must be descending"):
+        SemanticMappingPrediction.model_validate(payload)
+
+
 def test_duplicate_source_semantics_are_rejected() -> None:
     payload = _prediction_payload()
     semantics = payload["source_semantics"]
@@ -85,6 +116,28 @@ def test_duplicate_source_semantics_are_rejected() -> None:
     semantics.append(dict(semantics[0]))
 
     with pytest.raises(ValueError, match="source semantics must be unique"):
+        SemanticMappingPrediction.model_validate(payload)
+
+
+def test_prediction_locators_are_trimmed_and_compared_case_insensitively() -> None:
+    payload = _prediction_payload()
+    fields = payload["asim_fields"]
+    assert isinstance(fields, list)
+    duplicate = dict(fields[0])
+    duplicate["locator"] = " P1 "
+    fields.append(duplicate)
+
+    with pytest.raises(ValueError, match="field combinations must be unique"):
+        SemanticMappingPrediction.model_validate(payload)
+
+
+def test_prediction_locator_and_role_cannot_be_blank() -> None:
+    payload = _prediction_payload()
+    semantics = payload["source_semantics"]
+    assert isinstance(semantics, list)
+    semantics[0]["role"] = "   "
+
+    with pytest.raises(ValueError, match="value cannot be blank"):
         SemanticMappingPrediction.model_validate(payload)
 
 
