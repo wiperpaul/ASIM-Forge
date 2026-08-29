@@ -371,6 +371,7 @@ def test_comparison_reports_all_registered_approaches() -> None:
     assert frame.full_exact_match == 1
     assert retrieval.metrics.coverage == 0
     assert any("smoke test" in warning for warning in evaluations["semantic-frame"].warnings)
+    assert any("no mapped predictions" in warning for warning in retrieval.warnings)
     assert any(
         "No labelled reference" in warning
         for prediction in retrieval.predictions

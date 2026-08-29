@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
-from ....evaluation import SemanticMappingCase, SourceSemanticLabel
 from ....models import AsimCatalog, ParameterSlot
 from ...contracts import (
     ApproachIdentity,
@@ -17,6 +17,9 @@ from ...contracts import (
 )
 from .._lexical import slot_context
 from .matching import similarity, weighted_candidates
+
+if TYPE_CHECKING:
+    from ....evaluation import SemanticMappingCase, SourceSemanticLabel
 
 
 class CaseRetrievalApproach:

@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from typing import TYPE_CHECKING
 
-from ...evaluation import SemanticMappingCase
 from ..contracts import SemanticMappingApproach
 from .case_retrieval import CaseRetrievalApproach
 from .direct_lexical import DirectLexicalApproach
 from .semantic_frame import SemanticFrameApproach
 
-ApproachFactory = Callable[[Sequence[SemanticMappingCase]], SemanticMappingApproach]
+if TYPE_CHECKING:
+    from ...evaluation import SemanticMappingCase
+
+ApproachFactory = Callable[[Sequence["SemanticMappingCase"]], SemanticMappingApproach]
 
 
 def _build_direct_lexical(_: Sequence[SemanticMappingCase]) -> SemanticMappingApproach:

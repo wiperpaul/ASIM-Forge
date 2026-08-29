@@ -69,8 +69,9 @@ metrics, making failures and candidate ranks inspectable.
 
 The checked example contains one synthetic source and exists only to exercise the
 harness. The report emits warnings for fewer than 20 cases, a single source system,
-synthetic labels, and retrieval without reference cases. Its numbers must not be
-reported as approach quality.
+synthetic labels, and any approach that produces no mapped predictions. Individual
+retrieval predictions explain when no eligible reference case was available. These
+numbers must not be reported as approach quality.
 
 A useful dataset should:
 
