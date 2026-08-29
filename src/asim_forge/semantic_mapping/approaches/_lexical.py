@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
 
-from ..evaluation import SemanticMappingInput
-from ..models import AsimCatalog, AsimCatalogField, ParameterSlot
-from .contracts import RankedFieldCandidate, RankedSchemaCandidate
+from ...models import AsimCatalog, AsimCatalogField, ParameterSlot
+from ..contracts import RankedFieldCandidate, RankedSchemaCandidate
+from ..types import SemanticMappingInput
 
 _WORD = re.compile(r"[A-Za-z][A-Za-z0-9]*|[0-9]+")
 _CAMEL = re.compile(r"[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z]?[a-z]+|\d+")
@@ -138,26 +137,4 @@ def rank_fields(
             evidence=evidence,
         )
         for field, score, evidence in scored[:limit]
-    ]
-
-
-def similarity(left: str, right: str) -> float:
-    left_terms = tokens(left)
-    right_terms = tokens(right)
-    if not left_terms or not right_terms:
-        return 0.0
-    return len(left_terms & right_terms) / len(left_terms | right_terms)
-
-
-def weighted_candidates(
-    scores: Mapping[str, float],
-    *,
-    limit: int = 5,
-) -> list[RankedFieldCandidate]:
-    if not scores:
-        return []
-    maximum = max(scores.values())
-    return [
-        RankedFieldCandidate(asim_field=name, score=round(score / maximum, 6))
-        for name, score in sorted(scores.items(), key=lambda item: (-item[1], item[0]))[:limit]
     ]

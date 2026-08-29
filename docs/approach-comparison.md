@@ -27,14 +27,15 @@ identity, rankings, scores, evidence, and warnings live in
 
 | Approach | Module | Purpose |
 | --- | --- | --- |
-| `direct-lexical` | `semantic_mapping/direct.py` | A deliberately cheap benchmark that ranks catalogue fields directly from local slot context. It does not emit source-semantic roles or infer important constants. |
-| `semantic-frame` | `semantic_mapping/frame.py` | A two-stage benchmark that first names source roles and static meanings, then projects them into the catalogue. Its small lexical normalizers are evaluation baselines, not production vendor rules. |
+| `direct-lexical` | `semantic_mapping/approaches/direct_lexical/` | A deliberately cheap benchmark that ranks catalogue fields directly from local slot context. It does not emit source-semantic roles or infer important constants. |
+| `semantic-frame` | `semantic_mapping/approaches/semantic_frame/` | A two-stage benchmark that first names source roles and static meanings, then projects them into the catalogue. Its small lexical normalizers are evaluation baselines, not production vendor rules. |
 
-Shared tokenization and catalogue-ranking primitives live in `_lexical.py`; they do
-not own provider state or feedback. Adding an API, local model, MCP-backed service,
-retrieval method, or uncertainty-only oracle means implementing
-`SemanticMappingApproach` in a new module and registering its name. Existing cases
-and metrics remain unchanged.
+Each approach owns a package under `semantic_mapping/approaches/`. Shared
+tokenization and catalogue-ranking primitives live in the private
+`approaches/_lexical.py` module; they do not own provider state or feedback. Adding
+an API, local model, MCP-backed service, retrieval method, or uncertainty-only
+oracle means implementing `SemanticMappingApproach` in a new package and adding its
+factory to the approach registry. Existing cases and metrics remain unchanged.
 
 ## Metrics
 

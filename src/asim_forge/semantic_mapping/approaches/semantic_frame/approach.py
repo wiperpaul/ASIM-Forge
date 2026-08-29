@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from ..evaluation import SemanticMappingInput
-from ..models import AsimCatalog, ParameterSlot
-from ._lexical import rank_fields, rank_schemas, slot_context, tokens
-from .contracts import (
+from ....models import AsimCatalog, ParameterSlot
+from ...contracts import (
     ApproachIdentity,
     MappingRequest,
     PredictedAsimField,
     PredictedSourceSemantic,
     SemanticMappingPrediction,
 )
+from ...types import SemanticMappingInput
+from .._lexical import rank_fields, rank_schemas, slot_context, tokens
 
 _STATIC_SEMANTICS = (
     ("connection allowed", "network.connection.allowed", "event result", "Success"),
@@ -121,8 +121,11 @@ def _infer_slot_role(
     label_terms = tokens(slot.label)
     is_address = "ip" in label_terms or "address" in label_terms
     if "port" in terms:
-        side = "source" if "source" in terms else "destination"
-        return f"network.{side}.port"
+        if "source" in terms:
+            return "network.source.port"
+        if "destination" in terms:
+            return "network.destination.port"
+        return None
     if is_address and "source" in terms:
         return "network.source.address"
     if is_address and "destination" in terms:

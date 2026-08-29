@@ -5,6 +5,8 @@ import pytest
 from asim_forge import cli
 from asim_forge.evaluation import SemanticMappingCase, load_semantic_mapping_cases
 from asim_forge.models import AsimCatalog, AsimCatalogField, AsimCatalogManifest
+from asim_forge.semantic_mapping.approaches.direct_lexical import DirectLexicalApproach
+from asim_forge.semantic_mapping.approaches.semantic_frame import SemanticFrameApproach
 from asim_forge.semantic_mapping.comparison import (
     ComparisonError,
     compare_approaches,
@@ -14,8 +16,6 @@ from asim_forge.semantic_mapping.contracts import (
     MappingRequest,
     SemanticMappingPrediction,
 )
-from asim_forge.semantic_mapping.direct import DirectLexicalApproach
-from asim_forge.semantic_mapping.frame import SemanticFrameApproach
 from asim_forge.semantic_mapping.metrics import EvaluationError, evaluate_predictions
 
 EXAMPLE_CASES = Path("examples/evaluation/semantic-mapping-cases.jsonl")
@@ -341,6 +341,30 @@ def test_comparison_rejects_catalogue_revision_drift() -> None:
 
     with pytest.raises(ComparisonError, match="loaded catalogue revision"):
         compare_approaches([case], catalog)
+
+
+def test_comparison_requires_at_least_one_approach() -> None:
+    case = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
+
+    with pytest.raises(ComparisonError, match="At least one semantic mapping approach"):
+        compare_approaches([case], _catalog(), [])
+
+
+@pytest.mark.parametrize(
+    ("approaches", "message"),
+    [
+        (["missing-approach"], "Unknown semantic mapping approaches"),
+        (["direct-lexical", "direct-lexical"], "names must be unique"),
+    ],
+)
+def test_comparison_rejects_invalid_approach_selection(
+    approaches: list[str],
+    message: str,
+) -> None:
+    case = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
+
+    with pytest.raises(ComparisonError, match=message):
+        compare_approaches([case], _catalog(), approaches)
 
 
 def test_writes_reproducible_comparison_report(tmp_path: Path) -> None:

@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from ..models import AsimCatalog
-from ._lexical import rank_fields, rank_schemas, slot_context
-from .contracts import (
+from ....models import AsimCatalog
+from ...contracts import (
     ApproachIdentity,
     MappingRequest,
     PredictedAsimField,
     SemanticMappingPrediction,
 )
+from .._lexical import rank_fields, rank_schemas, slot_context
 
 
 class DirectLexicalApproach:

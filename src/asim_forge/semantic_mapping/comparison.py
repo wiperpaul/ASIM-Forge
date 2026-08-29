@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 
 from ..evaluation import SemanticMappingCase
 from ..models import AsimCatalog, StrictModel
-from . import APPROACH_NAMES, DirectLexicalApproach, SemanticFrameApproach
+from .approaches import APPROACH_NAMES, build_approach
 from .contracts import (
     ApproachIdentity,
     MappingRequest,
-    SemanticMappingApproach,
     SemanticMappingPrediction,
 )
 from .metrics import EvaluationError, EvaluationMetrics, evaluate_predictions
@@ -26,15 +26,15 @@ class ComparisonError(EvaluationError):
 class ApproachEvaluation(StrictModel):
     approach: ApproachIdentity
     metrics: EvaluationMetrics
-    predictions: list[SemanticMappingPrediction]
+    predictions: list[SemanticMappingPrediction] = Field(min_length=1)
     warnings: list[str] = Field(default_factory=list)
 
 
 class ComparisonReport(StrictModel):
-    format_version: str = "1"
+    format_version: Literal["1"] = "1"
     catalogue_revision: str = Field(pattern=r"^[0-9a-f]{40}$")
     case_count: int = Field(ge=1)
-    approaches: list[ApproachEvaluation]
+    approaches: list[ApproachEvaluation] = Field(min_length=1)
 
 
 def compare_approaches(
@@ -45,7 +45,9 @@ def compare_approaches(
     """Evaluate registered approaches against the same cases and catalogue."""
     if not cases:
         raise ComparisonError("At least one semantic mapping case is required")
-    names = list(approach_names or APPROACH_NAMES)
+    names = list(APPROACH_NAMES if approach_names is None else approach_names)
+    if not names:
+        raise ComparisonError("At least one semantic mapping approach is required")
     unknown = sorted(set(names) - set(APPROACH_NAMES))
     if unknown:
         raise ComparisonError(f"Unknown semantic mapping approaches: {unknown}")
@@ -61,9 +63,9 @@ def compare_approaches(
 
     evaluations: list[ApproachEvaluation] = []
     for name in names:
+        approach = build_approach(name)
         predictions: list[SemanticMappingPrediction] = []
         for case in cases:
-            approach = _build_approach(name)
             predictions.append(
                 approach.predict(
                     MappingRequest(
@@ -79,7 +81,7 @@ def compare_approaches(
                 approach=predictions[0].approach,
                 metrics=evaluate_predictions(cases, predictions),
                 predictions=predictions,
-                warnings=_evaluation_warnings(cases, name),
+                warnings=_evaluation_warnings(cases),
             )
         )
 
@@ -99,15 +101,7 @@ def write_comparison_report(path: Path, report: ComparisonReport) -> None:
     )
 
 
-def _build_approach(
-    name: str,
-) -> SemanticMappingApproach:
-    if name == "direct-lexical":
-        return DirectLexicalApproach()
-    return SemanticFrameApproach()
-
-
-def _evaluation_warnings(cases: list[SemanticMappingCase], name: str) -> list[str]:
+def _evaluation_warnings(cases: list[SemanticMappingCase]) -> list[str]:
     warnings: list[str] = []
     if len(cases) < 20:
         warnings.append("Fewer than 20 cases: results are a harness smoke test, not evidence.")
