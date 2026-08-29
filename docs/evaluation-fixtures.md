@@ -56,7 +56,7 @@ Operational fixtures may contain sensitive representative events. Keep them outs
 source control under `artifacts/` or another explicitly ignored secure location. Only
 synthetic or suitably sanitized cases should be checked in.
 
-## Deliberate exclusions
+## Deliberate exclusions from the gold format
 
 Format version 1 does not define:
 
@@ -67,5 +67,6 @@ Format version 1 does not define:
 - parser expressions and transform implementation;
 - automatic conversion from Stage 1 decisions.
 
-Those choices belong to the comparison PRs. Keeping them out of the gold format is
-what makes the first dataset reusable across approaches.
+The separate [approach comparison contract](approach-comparison.md) now defines
+provider predictions and the initial evaluation metrics. Keeping them out of the
+gold format is what makes the dataset reusable across approaches.

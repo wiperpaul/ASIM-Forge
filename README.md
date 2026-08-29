@@ -54,6 +54,20 @@ Validate the checked synthetic semantic-mapping case independently:
 uv run asim-forge evaluation validate examples/evaluation/semantic-mapping-cases.jsonl
 ```
 
+Once the matching catalogue revision is synced, compare the separated direct and
+source-frame baselines against exactly the same cases:
+
+```powershell
+uv run asim-forge evaluation compare `
+  examples/evaluation/semantic-mapping-cases.jsonl `
+  --catalog artifacts/asim-catalog `
+  --output artifacts/semantic-comparison.json
+```
+
+The [comparison design and metric rationale](docs/approach-comparison.md) explains
+how the implementations remain isolated and which results are comparable to the
+schema-matching and semantic-annotation literature.
+
 The checked-in decisions approve the Authentication and NetworkSession clusters and reject the AuditEvent cluster. The compile manifest therefore reports two generated parsers and one skipped review.
 
 ## Before opening a PR
