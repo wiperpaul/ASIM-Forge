@@ -1,78 +1,310 @@
 # ASIM Forge
 
-ASIM Forge is a human-supervised walking skeleton for turning static security logs into reviewed Microsoft Advanced Security Information Model (ASIM) parser candidates.
+ASIM Forge is an early-stage, human-in-the-loop toolkit for turning raw security
+logs into auditable Microsoft Advanced Security Information Model (ASIM) parser
+candidates. It also provides a controlled evaluation harness for comparing ways to
+suggest ASIM schemas and field mappings before those suggestions reach a reviewer.
 
-Milestone 1 implements the cluster-review boundary and a deterministic compiler walking skeleton:
+It is designed for security and detection engineers working with large volumes of
+unstructured telemetry. In particular, it supports organisations trying to enforce
+consistent application and infrastructure security-logging requirements across
+large environments where strong logging standards were not established from the
+outset.
+
+The current implementation targets ASIM, but the longer-term direction is broader:
+an open, modular workbench in which normalization targets such as OCSF, alternative
+mapping techniques, and external integrations can be added behind explicit
+contracts. The aim is to make approaches replaceable and outputs interoperable,
+rather than requiring the entire workflow to live inside one proprietary suite.
+
+The project is deliberately conservative: clustering, semantic suggestions, human
+decisions, parser generation, validation, and release are separate boundaries. A
+generated KQL file is a reviewable candidate, not a production-ready Microsoft
+Sentinel parser.
+
+## What exists today
+
+ASIM Forge currently has two connected areas of work.
+
+### Parser engineering walking skeleton
 
 ```text
-data/logs/*.{log,txt}
-  -> DeepParse mask synthesis and Drain clustering
-  -> stable typed cluster records
-  -> Stage 1 Potato cluster review
-  -> accepted cluster awaiting ASIM mapping
-  -> later engineering review / typed parser specification
-  -> deterministic KQL candidate
+line-oriented logs
+      |
+      v
+DeepParse mask synthesis + Drain clustering
+      |
+      v
+typed clusters + representative events + parameter slots
+      |
+      v
+independent cluster-coherence review in Potato
+      |
+      +-- rejected / split / insufficient evidence --> no parser
+      |
+      +-- approved but not mapped ------------------> awaiting_mapping
+      |
+      +-- approved with a complete mapping ---------> parser spec + KQL candidate
 ```
 
-Stage 1 decides only whether the examples form a coherent event pattern. Vendor/product metadata belongs to source onboarding, and ASIM schema and field mapping belong to a later engineering review. The compiler accepts the complete canonical review contract to exercise the downstream gate; a Stage 1 approval is reported as `awaiting_mapping` and never produces KQL by itself.
+The cluster reviewer decides only whether examples form a coherent event pattern.
+Vendor and product metadata, ASIM schema selection, and field mapping belong to a
+separate engineering decision. The compiler enforces that boundary: Stage 1 approval
+alone never produces KQL.
 
-The stages are separate approval checkpoints, not necessarily separate human sessions. [The roadmap](ROADMAP.md) plans a progressive review that prepares an ASIM suggestion in advance and reveals it immediately after cluster approval, so an eligible reviewer can continue while the examples are still fresh or defer it to an ASIM specialist.
+### Semantic-mapping evaluation
 
-Before selecting a semantic suggestion approach, the project defines
-[provider-neutral semantic mapping cases](docs/evaluation-fixtures.md). These cases
-separate source-event meaning from its expected ASIM projection and can be replayed
-unchanged through later baselines or model providers.
+```text
+provider-neutral labelled cases + commit-pinned ASIM catalogue
+                              |
+                              v
+                         MappingRequest
+                              |
+              +---------------+----------------+
+              |               |                |
+       direct-lexical   semantic-frame   case-retrieval
+              |               |                |
+              +---------------+----------------+
+                              |
+                              v
+                SemanticMappingPrediction
+                              |
+                              v
+                shared, provider-neutral metrics
+```
 
-## Why DeepParse
+All approaches receive the same input and return the same typed prediction contract.
+Expected labels never enter `MappingRequest`, and predictions remain separate from
+the gold cases. This makes deterministic baselines, retrieval, local models, and
+future API-backed approaches comparable without changing the fixtures or metrics.
 
-The clustering adapter uses [DeepParse v1.0.0](https://github.com/NightBaRron1412/DeepParse/tree/v1.0.0), pinned to commit `b53c29b379be5ab834ff990154297ef8fea8d98a`. Its repository describes an EASE 2026 mask-first approach: typed regex masks are synthesized once, then a deterministic Drain runtime handles each log line. The project is Apache-2.0 and includes a package, CLI, tests, CI, lockfile, and offline CPU mode.
+| Capability | Status |
+| --- | --- |
+| Ingest `.log` and `.txt` files | Implemented |
+| Deterministic mask-first clustering | Implemented |
+| Portable Potato cluster-review task | Implemented |
+| Typed review and parser-spec contracts | Implemented |
+| Deterministic parser-spec and KQL generation | Implemented |
+| Commit-pinned Microsoft ASIM field catalogue | Implemented |
+| Provider-neutral semantic-mapping fixtures | Implemented |
+| Shared ranking, F1, exact-match, coverage, and edit metrics | Implemented |
+| Direct lexical, semantic-frame, and case-retrieval baselines | Implemented |
+| Integrated ASIM mapping review UI | Planned |
+| Schema/data validation and Sentinel execution | Planned |
+| Additional normalization targets, such as OCSF | Contributions welcome |
+| Release packaging or automatic deployment | Not implemented |
 
-DeepParse is still a young project. ASIM Forge therefore confines it to `clustering.py` and records the immutable revision in every build manifest. Milestone 1 uses its deterministic offline mask bundle; it does not download or invoke an LLM.
+ASIM Forge is pre-alpha. The contracts and evaluation boundaries are intentional,
+but the end-to-end reviewer experience is still under construction.
 
-## Run the sample end to end
+## Quick start
 
-Python 3.11+ and [uv](https://docs.astral.sh/uv/) are required.
+ASIM Forge supports Python 3.11 through 3.14 and uses
+[uv](https://docs.astral.sh/uv/) for dependency management.
 
 ```powershell
-uv sync
+git clone https://github.com/wiperpaul/ASIM-Forge.git
+Set-Location ASIM-Forge
+uv sync --locked
+```
 
+Build clusters and a review bundle from the checked sample logs:
+
+```powershell
 uv run asim-forge build examples/sample-logs `
   --output artifacts/demo `
   --system demo
+```
 
+Compile the checked sample engineering decisions:
+
+```powershell
 uv run asim-forge compile `
   artifacts/demo/clusters.jsonl `
   examples/sample-review/reviews.jsonl `
   --output artifacts/demo/compiled
+```
 
+The sample contains nine events in three clusters. Its decisions produce two parser
+candidates and skip one rejected cluster.
+
+Run the test suite:
+
+```console
 uv run pytest
 ```
 
-Validate the checked synthetic semantic-mapping case independently:
+## Review clusters with Potato
+
+`asim-forge build` creates a self-contained Potato task alongside the cluster data.
+Install the optional review dependency and start the task:
+
+```powershell
+uv sync --extra review
+uv run potato start artifacts/demo/potato/config.yaml -p 8000
+```
+
+The task presents each template, its representative events, and extracted parameter
+slots as structured views. A reviewer can approve the cluster, request a split,
+reject it, ask for more evidence, and add notes. The task does not ask that reviewer
+to edit JSON or choose ASIM fields.
+
+Potato writes reviewer state below
+`potato/annotation_output/<reviewer>/user_state.json`. The compiler can read that
+state directly:
+
+```powershell
+uv run asim-forge compile `
+  artifacts/demo/clusters.jsonl `
+  artifacts/demo/potato/annotation_output/<reviewer>/user_state.json `
+  --output artifacts/demo/compiled
+```
+
+An approved Potato decision is expected to report `awaiting_mapping`; it does not
+contain the later source metadata and ASIM field decisions required for compilation.
+Canonical engineering-review JSONL remains available for reproducible tests and
+future UI integration; see
+[`examples/sample-review/reviews.jsonl`](examples/sample-review/reviews.jsonl).
+
+## Work with the ASIM catalogue
+
+ASIM Forge consumes the machine-readable field catalogue used by Microsoft's
+`ASimSchemaTester`. It does not maintain a hand-copied list of ASIM fields.
+
+```powershell
+uv run asim-forge catalog sync `
+  --output artifacts/asim-catalog `
+  --revision master
+```
+
+The command resolves a branch or tag to an immutable Azure-Sentinel commit, stores
+the upstream CSV unchanged, and writes a manifest containing the resolved revision,
+content SHA-256, schema coverage, and field count. Use that resolved 40-character
+commit for later runs when exact reproduction matters. `GITHUB_TOKEN` is used when
+available but is not required for occasional public catalogue access.
+
+Human-readable schema descriptions and semantic schema versions are not present in
+the tester CSV. They remain a separate, future enrichment concern rather than being
+embedded as locally maintained catalogue data.
+
+## Compare semantic-mapping approaches
+
+The checked fixture is synthetic and exists to exercise the contracts and comparison
+harness. First validate it:
 
 ```console
 uv run asim-forge evaluation validate examples/evaluation/semantic-mapping-cases.jsonl
 ```
 
-Once the matching catalogue revision is synced, compare the separated direct,
-source-frame, and retrieval baselines against exactly the same cases:
+The fixture is labelled against a specific Azure-Sentinel commit. Sync that exact
+catalogue revision, then run all registered approaches against the same case:
 
 ```powershell
+uv run asim-forge catalog sync `
+  --output artifacts/asim-catalog `
+  --revision 027a0f9338bfabcb27b784571b771c54572ebf01
+
 uv run asim-forge evaluation compare `
   examples/evaluation/semantic-mapping-cases.jsonl `
   --catalog artifacts/asim-catalog `
   --output artifacts/semantic-comparison.json
 ```
 
-The [comparison design and metric rationale](docs/approach-comparison.md) explains
-how the implementations remain isolated and which results are comparable to the
-schema-matching and semantic-annotation literature.
+Repeat `--approach` to run only selected approaches. Without it, the comparison runs
+all three:
 
-The checked-in decisions approve the Authentication and NetworkSession clusters and reject the AuditEvent cluster. The compile manifest therefore reports two generated parsers and one skipped review.
+| Approach | Role in the evaluation |
+| --- | --- |
+| `direct-lexical` | Cheap benchmark that ranks catalogue fields directly from local slot context. |
+| `semantic-frame` | Two-stage benchmark that names source semantics before projecting them into ASIM. |
+| `case-retrieval` | Transfers schemas, source roles, and mappings from similar labelled cases while excluding the current case ID. |
 
-## Before opening a PR
+The report includes every prediction plus aggregate schema ranking, source-role and
+field F1, field ranking, exact-match, coverage, disposition, and edit-count metrics.
+See the [approach comparison](docs/approach-comparison.md),
+[metric definitions](docs/evaluation-metrics.md), and
+[fixture contract](docs/evaluation-fixtures.md) for the design details.
 
-The CI checks are ordinary project commands and can be run directly from any shell:
+> [!WARNING]
+> The repository currently contains one synthetic semantic-mapping case. Its scores
+> are smoke-test results, not evidence that one approach is better than another.
+> Case retrieval correctly abstains when leave-one-out evaluation leaves no eligible
+> reference case. A multi-source, adjudicated dataset with grouped source or template
+> family splits is required before drawing quality conclusions.
+
+## Generated artefacts
+
+`asim-forge build` writes:
+
+- `clusters.jsonl` — stable cluster IDs, templates, representative events, parameter
+  slots, and transparent keyword schema suggestions.
+- `manifest.json` — inputs, event and cluster counts, masks, DeepParse revision, and
+  output provenance.
+- `potato/items.jsonl` and `potato/config.yaml` — a portable Stage 1 review task.
+
+`asim-forge catalog sync` writes:
+
+- `asim-catalog.csv` — an unchanged, commit-pinned upstream catalogue snapshot.
+- `catalog-manifest.json` — the source revision, integrity hash, and catalogue
+  coverage.
+
+`asim-forge evaluation compare` can write:
+
+- A JSON report containing approach identities, warnings, individual predictions,
+  and shared aggregate metrics.
+
+`asim-forge compile` writes:
+
+- One `*.parser-spec.json` and `*.kql` pair per approved, fully mapped review.
+- `compile-manifest.json` — generated outputs plus rejected, deferred, and
+  `awaiting_mapping` counts.
+
+Generated artefacts, raw operational logs, and Potato annotation state are ignored
+by Git because they may contain sensitive security data. Only synthetic or suitably
+sanitized evaluation cases should be committed.
+
+## Design boundaries
+
+- **Cluster judgement is independent.** ASIM suggestions must not anchor the initial
+  coherence decision.
+- **Suggestions are not approvals.** Generated rankings, confidence, evidence, and
+  warnings remain distinct from human decisions.
+- **Provenance is part of the output.** DeepParse, catalogue, approach, case, and
+  decision revisions are recorded at their respective boundaries.
+- **Compilation is deterministic.** The same complete cluster and review contracts
+  produce the same parser specification and KQL candidate.
+- **Deployment is out of scope.** ASIM Forge neither connects to a Sentinel workspace
+  nor promotes generated KQL automatically.
+
+The clustering adapter uses
+[DeepParse v1.0.0](https://github.com/NightBaRron1412/DeepParse/tree/v1.0.0), pinned
+to commit `b53c29b379be5ab834ff990154297ef8fea8d98a`. ASIM Forge confines that
+dependency to the clustering boundary and uses its deterministic offline mask
+bundle; the current build workflow does not download or invoke an LLM.
+
+## What comes next
+
+The next product milestone is a continuous assisted review: prepare a semantic
+suggestion before review, preserve cluster approval as an independent checkpoint,
+then let an eligible reviewer continue into editable ASIM schema and field mappings
+without rereading the event evidence or editing raw JSON.
+
+Before choosing a production suggestion provider, the evaluation work needs:
+
+1. adjudicated cases from multiple products and event families;
+2. explicit unresolved and not-applicable examples;
+3. grouped train/test splits that prevent near-duplicate template leakage; and
+4. per-schema and minority-role reporting alongside aggregate metrics.
+
+Later milestones add catalogue-aware validation, ASIM schema/data tests, parser
+preview, reviewer agreement, release packaging, and opt-in deployment gates. The
+full sequence and exit criteria are in the [roadmap](ROADMAP.md). The research basis
+for the semantic-mapping boundary is in
+[the semantic mapping research note](docs/semantic-mapping-research.md).
+
+## Development
+
+Run the same checks used in CI:
 
 ```console
 uv sync --locked
@@ -82,110 +314,37 @@ uv run ty check
 uv run pytest
 ```
 
-Enable the commit-time checks once after cloning:
+Enable commit-time checks after cloning:
 
 ```console
 uv run pre-commit install
-```
-
-The hook keeps `uv.lock` synchronized, checks common repository hygiene, applies
-safe Ruff fixes and formatting, and runs ty across the project. Run every hook
-against the whole repository at any time with:
-
-```console
 uv run pre-commit run --all-files
 ```
 
-GitHub Actions runs the same pre-commit checks for pull requests and pushes to
-`main`, with pytest covering every supported Python version from 3.11 through 3.14.
+GitHub Actions runs the quality checks and tests Python 3.11, 3.12, 3.13, and 3.14.
 
-## Review with Potato
+## Contributing
 
-Build creates a self-contained Potato task under the selected output directory:
+Contributions are welcome, particularly where they make the project more modular or
+interoperable. Useful directions include:
 
-```powershell
-uv sync --extra review
-uv run potato start artifacts/demo/potato/config.yaml -p 8000
-```
+- adapters for other normalization targets, including OCSF;
+- semantic-mapping techniques not represented by the current lexical, frame, and
+  retrieval baselines;
+- integrations with review tools, data platforms, and downstream validation
+  workflows;
+- provider-neutral evaluation cases, metrics, and leakage-resistant dataset splits;
+  and
+- improvements that separate general workflow contracts from ASIM-specific types
+  without weakening provenance or human approval boundaries.
 
-Potato persists Stage 1 review state under `potato/annotation_output/<reviewer>/user_state.json`. Passing that state to the compiler is safe, but accepted clusters are reported as `awaiting_mapping` until the later engineering review supplies parser metadata and ASIM mappings:
-
-```powershell
-uv run asim-forge compile `
-  artifacts/demo/clusters.jsonl `
-  artifacts/demo/potato/annotation_output/<reviewer>/user_state.json `
-  --output artifacts/demo/compiled
-```
-
-Potato presents the template, representative events, and extracted slots as separate structured views. The reviewer approves, splits, rejects, or requests more evidence and can add notes. It does not ask the cluster reviewer to identify the vendor/product, choose an ASIM schema, edit JSON, or map fields.
-
-Canonical engineering-review JSONL is accepted for reproducible compiler tests, source control, and integration with the later mapping UI. See `examples/sample-review/reviews.jsonl` for the complete contract.
-
-## Sync the ASIM catalogue
-
-Stage 2 uses the machine-readable field catalogue consumed by Microsoft's own
-`ASimSchemaTester`; ASIM Forge does not maintain a copied list of ASIM fields.
-Syncing resolves the requested Azure-Sentinel ref to an immutable commit before
-retrieving the catalogue:
-
-```powershell
-uv run asim-forge catalog sync `
-  --output artifacts/asim-catalog `
-  --revision master
-```
-
-The snapshot contains the unchanged upstream `ASimTester.csv` and a
-`catalog-manifest.json` recording the requested ref, resolved 40-character commit,
-content SHA-256, supported schemas, and field count. Use the resolved commit from
-that manifest as `--revision` to reproduce the exact catalogue without resolving a
-moving branch again. `GITHUB_TOKEN` is used when present but is not required for a
-public, low-volume sync.
-
-The cached snapshot is a generated input and remains under `artifacts/`; it is not
-a maintained fork of Microsoft's catalogue. The upstream CSV supplies field names,
-KQL types, field classes, logical types, enumerations, aliases, and dynamic types.
-Human-readable schema guidance and semantic schema-version enrichment remain a
-separate upstream documentation concern because the tester CSV does not contain
-those descriptions or version numbers.
-
-## Artefacts
-
-`asim-forge build` writes:
-
-- `clusters.jsonl`: stable cluster IDs, typed templates, samples, slot examples, and transparent schema suggestions.
-- `manifest.json`: input counts, DeepParse revision, masks, and output provenance.
-- `potato/items.jsonl`: one task per cluster.
-- `potato/config.yaml`: a portable Potato configuration.
-
-`asim-forge catalog sync` writes:
-
-- `asim-catalog.csv`: an unchanged, commit-pinned snapshot of Microsoft's tester catalogue.
-- `catalog-manifest.json`: source revision, integrity hash, and catalogue coverage.
-
-The checked `examples/evaluation/semantic-mapping-cases.jsonl` file demonstrates the
-provider-neutral evaluation contract. Real evaluation cases can contain sensitive
-event data and should remain under `artifacts/` or another explicitly ignored secure
-location.
-
-`asim-forge compile` writes one `*.parser-spec.json` and one `*.kql` per approved and fully mapped engineering review, plus `compile-manifest.json` recording generated, rejected, and awaiting-mapping decisions.
-
-Operational logs, generated artefacts, and Potato annotation state are ignored by Git by default because they may contain sensitive security data.
-
-## Current boundary
-
-The KQL files are reviewable candidates, not production-ready Sentinel releases. Milestone 1 does not yet:
-
-- use the synced catalogue to generate and validate mapping suggestions;
-- provide the later source-metadata and ASIM-mapping review interface;
-- run ASIM schema or data testers;
-- execute KQL against a Sentinel workspace;
-- generate schema-specific mandatory fields or event-result normalization;
-- resolve agreement between multiple reviewers;
-- deploy parsers automatically;
-- use a database, cloud service, Kubernetes, or external LLM.
-
-Those validation and release gates belong to later milestones. Keeping them out of this slice makes the approval boundary and generated provenance easy to inspect.
+Please open an issue before starting a substantial architectural change so the
+contract boundary can be agreed first. Evaluation fixtures and examples must be
+synthetic or suitably sanitized; do not commit operational logs, credentials,
+customer data, or other sensitive telemetry.
 
 ## Licence
 
-ASIM Forge is GPL-3.0-or-later. DeepParse remains Apache-2.0 and is not vendored. Potato is an optional, separately installed GPL dependency. See `LICENSE` and `THIRD_PARTY_NOTICES`.
+ASIM Forge is licensed under GPL-3.0-or-later. DeepParse remains Apache-2.0 and is
+not vendored. Potato is an optional, separately installed GPL dependency. See
+[`LICENSE`](LICENSE) and [`THIRD_PARTY_NOTICES`](THIRD_PARTY_NOTICES).
