@@ -1,0 +1,23 @@
+{
+  "format_version": "1",
+  "corpus_id": "matryoshka-sshd-1k",
+  "title": "Matryoshka SSH example",
+  "track": "format-diagnostic",
+  "objective": "Security-log format and clustering smoke test drawn from a security analytics paper artifact",
+  "system": "matryoshka-sshd",
+  "interpretation": "No ASIM gold labels are supplied; metrics are descriptive operational diagnostics only.",
+  "source": {
+    "project": "Matryoshka",
+    "url": "https://github.com/julien-piet/matryoshka/tree/2ee96934823ce3d01f70bdf84ff8cd4aa64acd2a/examples",
+    "paper_url": "https://people.eecs.berkeley.edu/~julien.piet/matryoshka.pdf",
+    "terms": "Public paper artifact; review the upstream repository licence before redistribution."
+  },
+  "resources": [
+    {
+      "role": "input",
+      "url": "https://raw.githubusercontent.com/julien-piet/matryoshka/2ee96934823ce3d01f70bdf84ff8cd4aa64acd2a/examples/sshd.txt",
+      "sha256": "ab7def026eb4f9c94ca83763aa197345f6c450cc7c0cc586f4f61baaa791f926"
+    }
+  ],
+  "max_events": 1000
+}

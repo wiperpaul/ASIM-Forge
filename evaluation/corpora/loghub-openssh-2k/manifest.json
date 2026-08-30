@@ -1,0 +1,28 @@
+{
+  "format_version": "1",
+  "corpus_id": "loghub-openssh-2k",
+  "title": "LogHub OpenSSH 2k",
+  "track": "parsing-gold",
+  "objective": "Log-template grouping on labelled SSH authentication logs",
+  "system": "loghub-openssh",
+  "interpretation": "EventId labels score clustering only; they are not incident or ASIM schema labels.",
+  "source": {
+    "project": "LogHub",
+    "url": "https://github.com/logpai/loghub/tree/dd61d0952749ee7963bde24220d1be5ede023033/OpenSSH",
+    "paper_url": "https://arxiv.org/abs/2008.06448",
+    "terms": "Public research dataset; review the upstream repository terms before redistribution."
+  },
+  "resources": [
+    {
+      "role": "input",
+      "url": "https://raw.githubusercontent.com/logpai/loghub/dd61d0952749ee7963bde24220d1be5ede023033/OpenSSH/OpenSSH_2k.log",
+      "sha256": "1e4912727fa88245113d41b16a0cd25ceadba7f931e1c406542885b91254264f"
+    },
+    {
+      "role": "gold",
+      "url": "https://raw.githubusercontent.com/logpai/loghub/dd61d0952749ee7963bde24220d1be5ede023033/OpenSSH/OpenSSH_2k.log_structured.csv",
+      "sha256": "c0996a11545f4b94b435993760afa441a9e373f7bfc9e787afdb8e62f65acb4f"
+    }
+  ],
+  "gold_column": "EventId"
+}

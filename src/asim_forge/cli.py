@@ -6,6 +6,7 @@ import argparse
 from collections.abc import Sequence
 from pathlib import Path
 
+from .benchmarking import BenchmarkError, run_benchmarks
 from .catalog import load_catalog, sync_catalog
 from .compiler import compile_reviews
 from .evaluation import EvaluationError, load_semantic_mapping_cases
@@ -95,6 +96,26 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Optional path for the complete JSON comparison report",
     )
+    evaluation_benchmark = evaluation_subparsers.add_parser(
+        "benchmark",
+        help="Run the registered parsing, security-format, and ASIM evaluation corpora",
+    )
+    evaluation_benchmark.add_argument(
+        "registry", type=Path, help="Directory containing corpus manifest folders"
+    )
+    evaluation_benchmark.add_argument(
+        "--catalog",
+        type=Path,
+        help="Pinned ASIM catalogue (required when semantic-gold corpora are present)",
+    )
+    evaluation_benchmark.add_argument("--output", type=Path, default=Path("artifacts/evaluation"))
+    evaluation_benchmark.add_argument("--cache", type=Path, help="Optional shared download cache")
+    evaluation_benchmark.add_argument(
+        "--revision", default="unknown", help="Source revision recorded in the report"
+    )
+    evaluation_benchmark.add_argument(
+        "--baseline", type=Path, help="Previous benchmark-report.json for comparable deltas"
+    )
     return parser
 
 
@@ -138,7 +159,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         elif args.evaluation_command == "validate":
             cases = load_semantic_mapping_cases(args.cases)
             print(f"Validated {len(cases)} provider-neutral semantic mapping case(s)")
-        else:
+        elif args.evaluation_command == "compare":
             cases = load_semantic_mapping_cases(args.cases)
             report = compare_approaches(
                 cases,
@@ -167,5 +188,25 @@ def main(argv: Sequence[str] | None = None) -> None:
                 )
                 for warning in evaluation.warnings:
                     print(f"  warning: {warning}")
-    except (EvaluationError, InputError, ReviewError, UnicodeError, ValueError) as error:
+        else:
+            report = run_benchmarks(
+                args.registry,
+                args.output,
+                catalog_dir=args.catalog,
+                cache_dir=args.cache,
+                revision=args.revision,
+                baseline_path=args.baseline,
+            )
+            print(
+                f"Evaluated {len(report.corpora)} corpora and wrote "
+                f"{len(report.results)} result row(s) to {args.output}"
+            )
+    except (
+        BenchmarkError,
+        EvaluationError,
+        InputError,
+        ReviewError,
+        UnicodeError,
+        ValueError,
+    ) as error:
         parser.error(str(error))

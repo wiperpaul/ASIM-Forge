@@ -1,0 +1,28 @@
+{
+  "format_version": "1",
+  "corpus_id": "loghub-apache-2k",
+  "title": "LogHub Apache 2k",
+  "track": "parsing-gold",
+  "objective": "Log-template grouping on labelled Apache error logs",
+  "system": "loghub-apache",
+  "interpretation": "EventId labels score clustering only; they are not incident or ASIM schema labels.",
+  "source": {
+    "project": "LogHub",
+    "url": "https://github.com/logpai/loghub/tree/dd61d0952749ee7963bde24220d1be5ede023033/Apache",
+    "paper_url": "https://arxiv.org/abs/2008.06448",
+    "terms": "Public research dataset; review the upstream repository terms before redistribution."
+  },
+  "resources": [
+    {
+      "role": "input",
+      "url": "https://raw.githubusercontent.com/logpai/loghub/dd61d0952749ee7963bde24220d1be5ede023033/Apache/Apache_2k.log",
+      "sha256": "c7efa3eb686e3a96bd2f8f4457b2a7887e9cf2f3649327f1b4e87af841363ce8"
+    },
+    {
+      "role": "gold",
+      "url": "https://raw.githubusercontent.com/logpai/loghub/dd61d0952749ee7963bde24220d1be5ede023033/Apache/Apache_2k.log_structured.csv",
+      "sha256": "54331d12eedf513f2127f4d89f0284c8b15fddfa5471103abf9db2c73d737778"
+    }
+  ],
+  "gold_column": "EventId"
+}
