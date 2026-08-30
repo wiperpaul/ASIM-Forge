@@ -5,6 +5,7 @@ import pytest
 from asim_forge import cli
 from asim_forge.evaluation import SemanticMappingCase, load_semantic_mapping_cases
 from asim_forge.models import AsimCatalog, AsimCatalogField, AsimCatalogManifest
+from asim_forge.semantic_mapping.approaches.case_retrieval import CaseRetrievalApproach
 from asim_forge.semantic_mapping.approaches.direct_lexical import DirectLexicalApproach
 from asim_forge.semantic_mapping.approaches.semantic_frame import SemanticFrameApproach
 from asim_forge.semantic_mapping.comparison import (
@@ -317,7 +318,43 @@ def test_semantic_frame_approach_maps_slots_and_static_meaning() -> None:
     assert event_result.constant_value == "Success"
 
 
-def test_comparison_reports_both_deterministic_baselines() -> None:
+def test_retrieval_transfers_a_labelled_case_without_reading_target_gold() -> None:
+    reference = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
+    target = reference.model_copy(
+        deep=True,
+        update={"case_id": "demo.network.allowed.variant"},
+    )
+    request = MappingRequest(
+        case_id=target.case_id,
+        catalogue_revision=target.catalogue_revision,
+        input=target.input,
+    )
+
+    prediction = CaseRetrievalApproach([reference]).predict(request, _catalog())
+    metrics = evaluate_predictions([target], [prediction])
+
+    assert prediction.disposition == "mapped"
+    assert metrics.mapping_exact_match == 1
+    assert metrics.source_micro_f1 == 1
+
+
+def test_retrieval_requires_at_least_one_neighbor() -> None:
+    with pytest.raises(ValueError, match="neighbors must be at least one"):
+        CaseRetrievalApproach([], neighbors=0)
+
+
+def test_retrieval_ignores_references_from_another_catalogue_revision() -> None:
+    reference = load_semantic_mapping_cases(EXAMPLE_CASES)[0].model_copy(
+        update={"catalogue_revision": "f" * 40}
+    )
+
+    prediction = CaseRetrievalApproach([reference]).predict(_request(), _catalog())
+
+    assert prediction.disposition == "unresolved"
+    assert any("No labelled reference" in warning for warning in prediction.warnings)
+
+
+def test_comparison_reports_all_registered_approaches() -> None:
     case = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
 
     report = compare_approaches([case], _catalog())
@@ -325,13 +362,21 @@ def test_comparison_reports_both_deterministic_baselines() -> None:
     evaluations = {evaluation.approach.name: evaluation for evaluation in report.approaches}
     direct = evaluations["direct-lexical"].metrics
     frame = evaluations["semantic-frame"].metrics
-    assert set(evaluations) == {"direct-lexical", "semantic-frame"}
+    retrieval = evaluations["case-retrieval"]
+    assert set(evaluations) == {"direct-lexical", "semantic-frame", "case-retrieval"}
     assert direct.schema_top1_accuracy == 1
     assert direct.field_micro_recall == 0.75
     assert direct.source_micro_f1 == 0
     assert frame.mapping_exact_match == 1
     assert frame.full_exact_match == 1
+    assert retrieval.metrics.coverage == 0
     assert any("smoke test" in warning for warning in evaluations["semantic-frame"].warnings)
+    assert any("no mapped predictions" in warning for warning in retrieval.warnings)
+    assert any(
+        "No labelled reference" in warning
+        for prediction in retrieval.predictions
+        for warning in prediction.warnings
+    )
 
 
 def test_comparison_rejects_catalogue_revision_drift() -> None:

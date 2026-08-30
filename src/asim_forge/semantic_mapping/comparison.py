@@ -63,7 +63,7 @@ def compare_approaches(
 
     evaluations: list[ApproachEvaluation] = []
     for name in names:
-        approach = build_approach(name)
+        approach = build_approach(name, reference_cases=cases)
         predictions: list[SemanticMappingPrediction] = []
         for case in cases:
             predictions.append(
@@ -81,7 +81,7 @@ def compare_approaches(
                 approach=predictions[0].approach,
                 metrics=evaluate_predictions(cases, predictions),
                 predictions=predictions,
-                warnings=_evaluation_warnings(cases),
+                warnings=_evaluation_warnings(cases, predictions),
             )
         )
 
@@ -101,7 +101,10 @@ def write_comparison_report(path: Path, report: ComparisonReport) -> None:
     )
 
 
-def _evaluation_warnings(cases: list[SemanticMappingCase]) -> list[str]:
+def _evaluation_warnings(
+    cases: list[SemanticMappingCase],
+    predictions: list[SemanticMappingPrediction],
+) -> list[str]:
     warnings: list[str] = []
     if len(cases) < 20:
         warnings.append("Fewer than 20 cases: results are a harness smoke test, not evidence.")
@@ -112,4 +115,6 @@ def _evaluation_warnings(cases: list[SemanticMappingCase]) -> list[str]:
         warnings.append(
             "Synthetic labels are present: do not report results as production accuracy."
         )
+    if not any(prediction.disposition == "mapped" for prediction in predictions):
+        warnings.append("Approach produced no mapped predictions for this case set.")
     return warnings
