@@ -1,0 +1,494 @@
+"""Reproducible, objective-aware corpus benchmarks."""
+
+from __future__ import annotations
+
+import csv
+import hashlib
+import io
+import json
+import tarfile
+import tempfile
+from collections import Counter
+from math import comb
+from pathlib import Path
+from typing import Literal
+from urllib.request import Request, urlopen
+
+from pydantic import Field, model_validator
+
+from .catalog import load_catalog
+from .clustering import DeepParseClusterer
+from .evaluation import load_semantic_mapping_cases
+from .ingestion import read_events
+from .models import StrictModel
+from .semantic_mapping.comparison import compare_approaches
+
+Track = Literal["parsing-gold", "format-diagnostic", "semantic-gold"]
+
+
+class BenchmarkError(ValueError):
+    """Raised when a corpus or benchmark result cannot be trusted."""
+
+
+class CorpusSource(StrictModel):
+    project: str
+    url: str
+    paper_url: str | None = None
+    terms: str
+
+
+class CorpusResource(StrictModel):
+    role: Literal["input", "gold"]
+    url: str
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    archive_member: str | None = None
+    jsonl_field: str | None = None
+
+
+class CorpusManifest(StrictModel):
+    format_version: Literal["1"] = "1"
+    corpus_id: str = Field(pattern=r"^[a-z0-9][a-z0-9.-]*$")
+    title: str
+    track: Track
+    objective: str
+    system: str
+    interpretation: str
+    source: CorpusSource
+    resources: list[CorpusResource] = Field(default_factory=list)
+    cases: str | None = None
+    max_events: int | None = Field(default=None, ge=1)
+    sample_size: int = Field(default=50, ge=1)
+    samples_per_cluster: int = Field(default=5, ge=1)
+    gold_column: str | None = None
+
+    @model_validator(mode="after")
+    def validate_track_inputs(self) -> CorpusManifest:
+        roles = [resource.role for resource in self.resources]
+        if self.track == "semantic-gold":
+            if self.cases is None or self.resources:
+                raise ValueError("semantic-gold corpora require cases and no remote resources")
+        elif self.cases is not None or roles.count("input") != 1:
+            raise ValueError("log corpora require exactly one input resource and no cases")
+        if self.track == "parsing-gold":
+            if roles.count("gold") != 1 or self.gold_column is None:
+                raise ValueError("parsing-gold corpora require one gold resource and gold_column")
+            if self.max_events is not None:
+                raise ValueError("parsing-gold corpora cannot truncate inputs")
+        elif "gold" in roles or self.gold_column is not None:
+            raise ValueError("only parsing-gold corpora may define parsing gold")
+        return self
+
+
+class CorpusSummary(StrictModel):
+    corpus_id: str
+    title: str
+    track: Track
+    objective: str
+    interpretation: str
+    system: str
+    source: CorpusSource
+    resources: list[CorpusResource] = Field(default_factory=list)
+    fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class BenchmarkRow(StrictModel):
+    corpus_id: str
+    track: Track
+    approach: str
+    item_count: int = Field(ge=1)
+    metrics: dict[str, float | int]
+    primary_metric: str
+    baseline_delta: float | None = None
+
+
+class BenchmarkReport(StrictModel):
+    format_version: Literal["1"] = "1"
+    revision: str
+    catalogue_revision: str | None = None
+    baseline_revision: str | None = None
+    corpora: list[CorpusSummary] = Field(min_length=1)
+    results: list[BenchmarkRow] = Field(min_length=1)
+    warnings: list[str] = Field(default_factory=list)
+
+
+def load_corpus_manifests(root: Path) -> list[tuple[Path, CorpusManifest, str]]:
+    paths = sorted(root.rglob("manifest.json"))
+    if not paths:
+        raise BenchmarkError(f"No corpus manifest.json files found in {root}")
+    loaded: list[tuple[Path, CorpusManifest, str]] = []
+    seen: set[str] = set()
+    for path in paths:
+        raw = path.read_bytes()
+        try:
+            manifest = CorpusManifest.model_validate_json(raw)
+        except ValueError as error:
+            raise BenchmarkError(f"Invalid corpus manifest {path}: {error}") from error
+        if manifest.corpus_id in seen:
+            raise BenchmarkError(f"Duplicate corpus_id: {manifest.corpus_id}")
+        seen.add(manifest.corpus_id)
+        fingerprint_input = raw
+        if manifest.cases is not None:
+            cases_path = _relative_file(path, manifest.cases)
+            fingerprint_input += cases_path.read_bytes()
+        loaded.append((path, manifest, hashlib.sha256(fingerprint_input).hexdigest()))
+    return loaded
+
+
+def run_benchmarks(
+    registry: Path,
+    output_dir: Path,
+    *,
+    catalog_dir: Path | None,
+    cache_dir: Path | None = None,
+    revision: str = "unknown",
+    baseline_path: Path | None = None,
+) -> BenchmarkReport:
+    manifests = load_corpus_manifests(registry)
+    needs_catalog = any(manifest.track == "semantic-gold" for _, manifest, _ in manifests)
+    if needs_catalog and catalog_dir is None:
+        raise BenchmarkError("--catalog is required when semantic-gold corpora are selected")
+    catalog = load_catalog(catalog_dir) if needs_catalog and catalog_dir is not None else None
+    cache = cache_dir or output_dir / "cache"
+    corpora: list[CorpusSummary] = []
+    results: list[BenchmarkRow] = []
+    warnings: list[str] = []
+
+    for path, manifest, fingerprint in manifests:
+        corpora.append(
+            CorpusSummary(
+                corpus_id=manifest.corpus_id,
+                title=manifest.title,
+                track=manifest.track,
+                objective=manifest.objective,
+                interpretation=manifest.interpretation,
+                system=manifest.system,
+                source=manifest.source,
+                resources=manifest.resources,
+                fingerprint=fingerprint,
+            )
+        )
+        if manifest.track == "semantic-gold":
+            assert catalog is not None and manifest.cases is not None
+            cases = load_semantic_mapping_cases(_relative_file(path, manifest.cases))
+            comparison = compare_approaches(cases, catalog)
+            for evaluation in comparison.approaches:
+                metrics = evaluation.metrics.model_dump(mode="json")
+                results.append(
+                    BenchmarkRow(
+                        corpus_id=manifest.corpus_id,
+                        track=manifest.track,
+                        approach=evaluation.approach.name,
+                        item_count=len(cases),
+                        metrics=metrics,
+                        primary_metric="field_micro_f1",
+                    )
+                )
+                warnings.extend(
+                    f"{manifest.corpus_id}/{evaluation.approach.name}: {warning}"
+                    for warning in evaluation.warnings
+                )
+            continue
+
+        with tempfile.TemporaryDirectory(prefix="asim-forge-benchmark-") as temporary:
+            staged = Path(temporary)
+            resource_paths = {
+                resource.role: _stage_resource(resource, cache, staged, manifest.max_events)
+                for resource in manifest.resources
+            }
+            events, _ = read_events(staged / "input")
+            clustering = DeepParseClusterer(
+                system=manifest.system,
+                sample_size=manifest.sample_size,
+                samples_per_cluster=manifest.samples_per_cluster,
+            ).cluster(events)
+            if manifest.track == "parsing-gold":
+                gold = _read_gold(resource_paths["gold"], manifest.gold_column or "")
+                if len(gold) != len(clustering.assignments):
+                    raise BenchmarkError(
+                        f"{manifest.corpus_id}: {len(gold)} gold rows do not match "
+                        f"{len(clustering.assignments)} input events"
+                    )
+                metrics = parsing_metrics(clustering.assignments, gold)
+                primary = "pair_f1"
+            else:
+                slot_clusters = sum(
+                    bool(cluster.parameter_slots) for cluster in clustering.clusters
+                )
+                fit_events = sum(
+                    cluster.event_count
+                    for cluster in clustering.clusters
+                    if cluster.schema_suggestion.schema_name != "NoFit"
+                )
+                metrics = {
+                    "cluster_count": len(clustering.clusters),
+                    "slot_cluster_rate": round(slot_clusters / len(clustering.clusters), 6),
+                    "provisional_asim_fit_event_rate": round(fit_events / len(events), 6),
+                }
+                primary = "provisional_asim_fit_event_rate"
+            results.append(
+                BenchmarkRow(
+                    corpus_id=manifest.corpus_id,
+                    track=manifest.track,
+                    approach="deepparse-default",
+                    item_count=len(events),
+                    metrics=metrics,
+                    primary_metric=primary,
+                )
+            )
+
+    report = BenchmarkReport(
+        revision=revision,
+        catalogue_revision=catalog.manifest.resolved_revision if catalog is not None else None,
+        corpora=corpora,
+        results=results,
+        warnings=warnings,
+    )
+    if baseline_path is not None and baseline_path.is_file():
+        report = _apply_baseline(report, _load_report(baseline_path))
+    write_benchmark_report(output_dir, report)
+    return report
+
+
+def parsing_metrics(predicted: list[int], gold: list[str]) -> dict[str, float | int]:
+    if not predicted or len(predicted) != len(gold):
+        raise BenchmarkError("Predicted and gold labels must be non-empty and equal length")
+    contingency = Counter(zip(predicted, gold, strict=True))
+    predicted_counts = Counter(predicted)
+    gold_counts = Counter(gold)
+    true_pairs = sum(comb(count, 2) for count in contingency.values())
+    predicted_pairs = sum(comb(count, 2) for count in predicted_counts.values())
+    gold_pairs = sum(comb(count, 2) for count in gold_counts.values())
+    precision = true_pairs / predicted_pairs if predicted_pairs else 0.0
+    recall = true_pairs / gold_pairs if gold_pairs else 0.0
+    pair_f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+    purity_total = sum(
+        max(count for (cluster, _), count in contingency.items() if cluster == predicted_id)
+        for predicted_id in predicted_counts
+    )
+    return {
+        "predicted_clusters": len(predicted_counts),
+        "gold_templates": len(gold_counts),
+        "pair_precision": round(precision, 6),
+        "pair_recall": round(recall, 6),
+        "pair_f1": round(pair_f1, 6),
+        "cluster_purity": round(purity_total / len(predicted), 6),
+    }
+
+
+def write_benchmark_report(output_dir: Path, report: BenchmarkReport) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "benchmark-report.json").write_text(
+        json.dumps(report.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (output_dir / "benchmark-report.md").write_text(
+        render_markdown(report), encoding="utf-8", newline="\n"
+    )
+
+
+def render_markdown(report: BenchmarkReport) -> str:
+    summaries = {corpus.corpus_id: corpus for corpus in report.corpora}
+    lines = ["# ASIM Forge evaluation", "", f"Revision: `{report.revision}`"]
+    if report.baseline_revision is not None:
+        lines.append(f"Baseline: `{report.baseline_revision}`")
+    if report.catalogue_revision is not None:
+        lines.append(f"ASIM catalogue: `{report.catalogue_revision}`")
+    lines.extend(["", "## Parsing gold", ""])
+    parsing_rows = [row for row in report.results if row.track == "parsing-gold"]
+    lines.extend(
+        _table(
+            ["Corpus", "Events", "Pred/gold", "Pair F1", "Purity", "Delta"],
+            [
+                [
+                    summaries[row.corpus_id].title,
+                    str(row.item_count),
+                    f"{row.metrics['predicted_clusters']}/{row.metrics['gold_templates']}",
+                    _number(row.metrics["pair_f1"]),
+                    _number(row.metrics["cluster_purity"]),
+                    _delta(row.baseline_delta),
+                ]
+                for row in parsing_rows
+            ],
+        )
+    )
+    lines.extend(
+        [
+            "",
+            "Pairwise F1 and purity measure template grouping against corpus labels; they do "
+            "not measure incident detection or ASIM correctness.",
+            "",
+            "## Security-format diagnostics",
+            "",
+        ]
+    )
+    diagnostic_rows = [row for row in report.results if row.track == "format-diagnostic"]
+    lines.extend(
+        _table(
+            ["Corpus", "Events", "Clusters", "Slot clusters", "Provisional ASIM fit", "Delta"],
+            [
+                [
+                    summaries[row.corpus_id].title,
+                    str(row.item_count),
+                    str(row.metrics["cluster_count"]),
+                    _number(row.metrics["slot_cluster_rate"]),
+                    _number(row.metrics["provisional_asim_fit_event_rate"]),
+                    _delta(row.baseline_delta),
+                ]
+                for row in diagnostic_rows
+            ],
+        )
+    )
+    lines.extend(
+        [
+            "",
+            "These are operational diagnostics only. The upstream security objectives and "
+            "labels are not treated as ASIM schema ground truth.",
+            "",
+            "## Adjudicated ASIM mapping",
+            "",
+        ]
+    )
+    semantic_rows = [row for row in report.results if row.track == "semantic-gold"]
+    lines.extend(
+        _table(
+            ["Corpus", "Approach", "Cases", "Schema@1", "Role F1", "Field F1", "Exact", "Delta"],
+            [
+                [
+                    summaries[row.corpus_id].title,
+                    row.approach,
+                    str(row.item_count),
+                    _number(row.metrics["schema_top1_accuracy"]),
+                    _number(row.metrics["source_micro_f1"]),
+                    _number(row.metrics["field_micro_f1"]),
+                    _number(row.metrics["mapping_exact_match"]),
+                    _delta(row.baseline_delta),
+                ]
+                for row in semantic_rows
+            ],
+        )
+    )
+    if report.warnings:
+        lines.extend(["", "## Warnings", ""])
+        lines.extend(f"- {warning}" for warning in report.warnings)
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _stage_resource(
+    resource: CorpusResource,
+    cache_dir: Path,
+    staged: Path,
+    max_events: int | None,
+) -> Path:
+    content = _fetch_verified(resource, cache_dir)
+    if resource.archive_member is not None:
+        try:
+            with tarfile.open(fileobj=io.BytesIO(content), mode="r:*") as archive:
+                member = archive.getmember(resource.archive_member)
+                extracted = archive.extractfile(member)
+                if extracted is None or not member.isfile():
+                    raise BenchmarkError(f"Archive member is not a file: {resource.archive_member}")
+                content = extracted.read()
+        except (KeyError, tarfile.TarError) as error:
+            raise BenchmarkError(f"Cannot read archive member {resource.archive_member}") from error
+    if resource.jsonl_field is not None:
+        lines: list[str] = []
+        for raw_line in content.decode("utf-8").splitlines():
+            if raw_line.strip():
+                payload = json.loads(raw_line)
+                value = payload.get(resource.jsonl_field)
+                if not isinstance(value, str) or not value.strip():
+                    raise BenchmarkError(f"Missing string JSONL field {resource.jsonl_field!r}")
+                lines.append(value.replace("\r", " ").replace("\n", " "))
+                if max_events is not None and len(lines) >= max_events:
+                    break
+        content = ("\n".join(lines) + "\n").encode()
+    elif resource.role == "input" and max_events is not None:
+        content = b"\n".join(content.splitlines()[:max_events]) + b"\n"
+    directory = staged / resource.role
+    directory.mkdir(parents=True, exist_ok=True)
+    suffix = ".csv" if resource.role == "gold" else ".log"
+    path = directory / f"corpus{suffix}"
+    path.write_bytes(content)
+    return path
+
+
+def _fetch_verified(resource: CorpusResource, cache_dir: Path) -> bytes:
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    path = cache_dir / f"{resource.sha256}.blob"
+    if path.is_file():
+        content = path.read_bytes()
+    else:
+        request = Request(resource.url, headers={"User-Agent": "ASIM-Forge-Benchmark/1"})
+        try:
+            with urlopen(request, timeout=60) as response:  # noqa: S310
+                content = response.read()
+        except OSError as error:
+            raise BenchmarkError(f"Could not retrieve {resource.url}: {error}") from error
+    actual = hashlib.sha256(content).hexdigest()
+    if actual != resource.sha256:
+        raise BenchmarkError(
+            f"Checksum mismatch for {resource.url}: expected {resource.sha256}, got {actual}"
+        )
+    if not path.is_file():
+        path.write_bytes(content)
+    return content
+
+
+def _read_gold(path: Path, column: str) -> list[str]:
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None or column not in reader.fieldnames:
+            raise BenchmarkError(f"Gold CSV does not contain {column!r}: {path}")
+        return [row[column] for row in reader]
+
+
+def _relative_file(manifest_path: Path, relative: str) -> Path:
+    path = (manifest_path.parent / relative).resolve()
+    if not path.is_file():
+        raise BenchmarkError(f"Referenced corpus file does not exist: {path}")
+    return path
+
+
+def _load_report(path: Path) -> BenchmarkReport:
+    try:
+        return BenchmarkReport.model_validate_json(path.read_bytes())
+    except ValueError as error:
+        raise BenchmarkError(f"Invalid baseline benchmark report {path}: {error}") from error
+
+
+def _apply_baseline(report: BenchmarkReport, baseline: BenchmarkReport) -> BenchmarkReport:
+    current_fingerprints = {corpus.corpus_id: corpus.fingerprint for corpus in report.corpora}
+    baseline_fingerprints = {corpus.corpus_id: corpus.fingerprint for corpus in baseline.corpora}
+    old_rows = {(row.corpus_id, row.approach): row for row in baseline.results}
+    for row in report.results:
+        old = old_rows.get((row.corpus_id, row.approach))
+        if old is None or current_fingerprints.get(row.corpus_id) != baseline_fingerprints.get(
+            row.corpus_id
+        ):
+            continue
+        if row.primary_metric != old.primary_metric:
+            continue
+        current_value = row.metrics.get(row.primary_metric)
+        old_value = old.metrics.get(old.primary_metric)
+        if isinstance(current_value, (int, float)) and isinstance(old_value, (int, float)):
+            row.baseline_delta = round(float(current_value) - float(old_value), 6)
+    report.baseline_revision = baseline.revision
+    return report
+
+
+def _table(headers: list[str], rows: list[list[str]]) -> list[str]:
+    return [
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join("---" for _ in headers) + " |",
+        *("| " + " | ".join(row) + " |" for row in rows),
+    ]
+
+
+def _number(value: float | int) -> str:
+    return f"{float(value):.3f}"
+
+
+def _delta(value: float | None) -> str:
+    return "—" if value is None else f"{value:+.3f}"

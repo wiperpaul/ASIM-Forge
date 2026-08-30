@@ -92,7 +92,8 @@ future API-backed approaches comparable without changing the fixtures or metrics
 | Integrated ASIM mapping review UI | Planned |
 | Schema/data validation and Sentinel execution | Planned |
 | Additional normalization targets, such as OCSF | Contributions welcome |
-| Release packaging or automatic deployment | Not implemented |
+| Corpus benchmark reports and evaluation prereleases | Implemented |
+| Automatic production deployment | Not implemented |
 
 ASIM Forge is pre-alpha. The contracts and evaluation boundaries are intentional,
 but the end-to-end reviewer experience is still under construction.
@@ -232,6 +233,29 @@ See the [approach comparison](docs/approach-comparison.md),
 > reference case. A multi-source, adjudicated dataset with grouped source or template
 > family splits is required before drawing quality conclusions.
 
+## Run the corpus benchmark
+
+The checked corpus registry combines three small LogHub datasets with security-paper
+artifacts and the adjudicated ASIM fixture. The report keeps their objectives
+separate: LogHub template labels score clustering, paper artifacts provide
+format/stress diagnostics, and only ASIM-labelled cases score schema and field
+correctness.
+
+```powershell
+uv run asim-forge evaluation benchmark evaluation/corpora `
+  --catalog artifacts/asim-catalog `
+  --output artifacts/evaluation `
+  --revision (git rev-parse HEAD)
+```
+
+Remote inputs are fetched from pinned sources, checksum-verified, and cached under
+ignored artifacts rather than committed. The command writes machine-readable JSON
+and a release-ready Markdown table. CI publishes the same files as an artifact on
+pull requests and as an evaluation prerelease after successful relevant changes on
+`main`; tagged releases receive the reports too. See the
+[corpus and release design](docs/benchmark-releases.md) for corpus provenance,
+metric boundaries, local reproduction, and baseline-delta rules.
+
 ## Generated artefacts
 
 `asim-forge build` writes:
@@ -252,6 +276,11 @@ See the [approach comparison](docs/approach-comparison.md),
 
 - A JSON report containing approach identities, warnings, individual predictions,
   and shared aggregate metrics.
+
+`asim-forge evaluation benchmark` writes:
+
+- `benchmark-report.json` — revisioned corpus results and comparable baseline deltas.
+- `benchmark-report.md` — objective-separated tables suitable for release notes.
 
 `asim-forge compile` writes:
 

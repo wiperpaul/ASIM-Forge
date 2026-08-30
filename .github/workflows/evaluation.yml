@@ -1,0 +1,143 @@
+name: Corpus evaluation
+
+"on":
+  pull_request:
+    paths:
+      - ".github/workflows/evaluation.yml"
+      - "evaluation/**"
+      - "examples/evaluation/**"
+      - "src/asim_forge/**"
+      - "pyproject.toml"
+      - "uv.lock"
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths:
+      - ".github/workflows/evaluation.yml"
+      - "evaluation/**"
+      - "examples/evaluation/**"
+      - "src/asim_forge/**"
+      - "pyproject.toml"
+      - "uv.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evaluation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evaluate:
+    name: Evaluate registered corpora
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.12.5"
+          python-version: "3.11"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      - name: Sync the pinned ASIM catalogue
+        run: >-
+          uv run --no-sync asim-forge catalog sync
+          --output artifacts/asim-catalog
+          --revision 027a0f9338bfabcb27b784571b771c54572ebf01
+
+      - name: Download the previous evaluation report
+        id: baseline
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="$(gh release list --limit 100 --json tagName,publishedAt \
+            --jq '[.[] | select(.tagName | startswith("eval-"))][0].tagName')"
+          test -n "$tag"
+          mkdir -p artifacts/baseline
+          gh release download "$tag" \
+            --pattern benchmark-report.json \
+            --dir artifacts/baseline
+
+      - name: Run the corpus evaluation
+        env:
+          EVALUATION_REVISION: ${{ github.sha }}
+        run: |
+          baseline=()
+          if test -f artifacts/baseline/benchmark-report.json; then
+            baseline=(--baseline artifacts/baseline/benchmark-report.json)
+          fi
+          uv run --no-sync asim-forge evaluation benchmark evaluation/corpora \
+            --catalog artifacts/asim-catalog \
+            --cache artifacts/corpus-cache \
+            --output artifacts/evaluation \
+            --revision "$EVALUATION_REVISION" \
+            "${baseline[@]}"
+
+      - name: Upload evaluation artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: corpus-evaluation-${{ github.sha }}
+          path: |
+            artifacts/evaluation/benchmark-report.json
+            artifacts/evaluation/benchmark-report.md
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish evaluation release
+    needs: evaluate
+    if: >-
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download evaluated reports
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: corpus-evaluation-${{ github.sha }}
+          path: release-assets
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            tag="$GITHUB_REF_NAME"
+            if gh release view "$tag" >/dev/null 2>&1; then
+              gh release upload "$tag" release-assets/* --clobber
+            else
+              gh release create "$tag" release-assets/* \
+                --verify-tag \
+                --title "$tag evaluation" \
+                --notes-file release-assets/benchmark-report.md
+            fi
+          else
+            tag="eval-${GITHUB_RUN_NUMBER}-${GITHUB_SHA:0:7}"
+            gh release create "$tag" release-assets/* \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --latest=false \
+              --title "Evaluation ${GITHUB_SHA:0:7}" \
+              --notes-file release-assets/benchmark-report.md
+          fi

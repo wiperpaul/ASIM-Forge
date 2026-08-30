@@ -24,6 +24,7 @@ _PLACEHOLDER = re.compile(r"<VAR:([A-Za-z0-9_]+)>")
 class ClusterResult:
     clusters: list[ClusterRecord]
     masks: list[MaskDefinition]
+    assignments: list[int]
 
 
 class DeepParseClusterer:
@@ -74,7 +75,11 @@ class DeepParseClusterer:
             typed_template = _restore_typed_placeholders(template, members, mask_applier)
             clusters.append(self._to_cluster(engine_cluster_id + 1, typed_template, members))
         clusters.sort(key=lambda cluster: cluster.cluster_id)
-        return ClusterResult(clusters=clusters, masks=masks)
+        return ClusterResult(
+            clusters=clusters,
+            masks=masks,
+            assignments=[cluster_id for cluster_id, _ in assignments],
+        )
 
     def _to_cluster(
         self,
