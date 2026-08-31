@@ -27,6 +27,8 @@ from .contracts import (
     semantic_input_fingerprint,
     semantic_task_revision,
 )
+from .integrity import validate_semantic_promotion_artifacts
+from .promotion import promote_semantic_annotations
 from .queue import prepare_semantic_annotation_queue
 
 __all__ = [
@@ -50,8 +52,10 @@ __all__ = [
     "load_semantic_annotation_decisions",
     "load_semantic_annotation_tasks",
     "prepare_semantic_annotation_queue",
+    "promote_semantic_annotations",
     "semantic_input_fingerprint",
     "semantic_task_revision",
+    "validate_semantic_promotion_artifacts",
     "write_semantic_annotation_decisions",
     "write_semantic_annotation_tasks",
 ]
