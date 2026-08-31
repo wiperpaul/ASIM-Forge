@@ -51,6 +51,11 @@ redistributing third-party datasets and reduces the chance of operational logs
 being committed. The manifest records upstream terms, but downstream users remain
 responsible for checking them.
 
+A `semantic-gold` corpus that declares a grouped `split` must also declare the
+promotion-produced `case_groups` and `promotion_manifest` files. The benchmark
+hashes all three and rejects a split whose group IDs differ from the assignments
+frozen before annotation.
+
 Run the complete registry locally:
 
 ```powershell

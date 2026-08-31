@@ -87,6 +87,7 @@ future API-backed approaches comparable without changing the fixtures or metrics
 | Deterministic parser-spec and KQL generation | Implemented |
 | Commit-pinned Microsoft ASIM field catalogue | Implemented |
 | Provider-neutral semantic-mapping fixtures | Implemented |
+| Blinded semantic annotation queue and gold promotion | Implemented |
 | Shared ranking, F1, exact-match, coverage, and edit metrics | Implemented |
 | Direct lexical, semantic-frame, and case-retrieval baselines | Implemented |
 | Integrated ASIM mapping review UI | Planned |
@@ -188,6 +189,31 @@ Human-readable schema descriptions and semantic schema versions are not present 
 the tester CSV. They remain a separate, future enrichment concern rather than being
 embedded as locally maintained catalogue data.
 
+## Build the semantic pilot safely
+
+Approved clusters can now enter a blinded annotation queue without carrying their
+keyword schema suggestion, historic parser mapping, or any approach prediction:
+
+```powershell
+uv run asim-forge evaluation queue artifacts/demo path/to/cluster-reviews.jsonl `
+  --catalog artifacts/asim-catalog `
+  --group-id demo.authentication `
+  --group-strategy source-family `
+  --output artifacts/semantic-annotation/demo
+```
+
+The queue fixes the source-family group and fingerprints the exact template,
+representative events, slots, metadata, and catalogue boundary before labels are
+collected. It neutralizes source filenames and hashes the complete selected task
+set. Promotion consumes that verified queue, validates typed decisions against the
+frozen evidence and pinned ASIM catalogue, and requires an explicit adjudication
+by default; `--allow-single-review` is reserved for provisional calibration cases.
+
+This is curator tooling for assembling the first 30-50 multi-source cases, while
+the structured semantic-review UI remains planned. See the
+[blinded annotation workflow](docs/semantic-annotation-workflow.md) and
+[pilot acquisition plan](evaluation/semantic-pilot/README.md).
+
 ## Compare semantic-mapping approaches
 
 The checked fixture is synthetic and exists to exercise the contracts and comparison
@@ -220,11 +246,27 @@ all three:
 | `semantic-frame` | Two-stage benchmark that names source semantics before projecting them into ASIM. |
 | `case-retrieval` | Transfers schemas, source roles, and mappings from similar labelled cases while excluding the current case ID. |
 
+For comparison evidence, provide an external grouped split. Retrieval then receives
+only the declared training/reference cases while every approach is scored on the
+same held-out partition:
+
+```powershell
+uv run asim-forge evaluation compare path/to/cases.jsonl `
+  --split path/to/split.json `
+  --case-groups path/to/case-groups.jsonl `
+  --promotion-manifest path/to/promotion-manifest.json `
+  --partition test `
+  --catalog artifacts/asim-catalog `
+  --output artifacts/semantic-comparison.json
+```
+
 The report includes every prediction plus aggregate schema ranking, source-role and
 field F1, field ranking, exact-match, coverage, disposition, and edit-count metrics.
 See the [approach comparison](docs/approach-comparison.md),
 [metric definitions](docs/evaluation-metrics.md), and
-[fixture contract](docs/evaluation-fixtures.md) for the design details.
+[fixture contract](docs/evaluation-fixtures.md) for the design details. The
+[grouped split contract](docs/semantic-dataset-splits.md) defines the leakage
+boundary required for retrieval comparisons.
 
 > [!WARNING]
 > The repository currently contains one synthetic semantic-mapping case. Its scores

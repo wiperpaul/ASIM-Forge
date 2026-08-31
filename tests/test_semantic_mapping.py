@@ -372,6 +372,10 @@ def test_comparison_reports_all_registered_approaches() -> None:
     assert retrieval.metrics.coverage == 0
     assert any("smoke test" in warning for warning in evaluations["semantic-frame"].warnings)
     assert any("no mapped predictions" in warning for warning in retrieval.warnings)
+    assert any("No explicit grouped split" in warning for warning in retrieval.warnings)
+    assert not any(
+        "No explicit grouped split" in warning for warning in evaluations["semantic-frame"].warnings
+    )
     assert any(
         "No labelled reference" in warning
         for prediction in retrieval.predictions

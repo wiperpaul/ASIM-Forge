@@ -82,7 +82,11 @@ A useful dataset should:
 5. run each ablation against the exact same cases and catalogue revision;
 6. later add parser execution and security-query precision/recall.
 
-Case retrieval currently uses leave-one-out evaluation because there is no train/test
-manifest yet. It is safe from same-case leakage but not from near-duplicate templates.
-A grouped split manifest is therefore the next dataset task before drawing conclusions
-from retrieval performance.
+Without a split manifest, case retrieval uses leave-one-out evaluation for backwards-
+compatible smoke tests. It is safe from same-case leakage but not from near-duplicate
+templates, and the report now warns that its result is not comparison evidence. Use
+the [grouped split manifest](semantic-dataset-splits.md) for real comparisons: retrieval
+then sees only declared reference partitions while every approach is scored on the
+same held-out validation or test cases. The CLI also requires the promoted
+`case-groups.jsonl` and `promotion-manifest.json` so a split cannot rewrite groups
+after labels are visible.

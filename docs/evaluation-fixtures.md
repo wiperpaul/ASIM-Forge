@@ -65,8 +65,17 @@ Format version 1 does not define:
 - evaluation metrics or train/test splits;
 - a controlled source-role ontology;
 - parser expressions and transform implementation;
-- automatic conversion from Stage 1 decisions.
+- direct or automatic conversion from Stage 1 decisions into gold labels.
 
 The separate [approach comparison contract](approach-comparison.md) now defines
 provider predictions and the initial evaluation metrics. Keeping them out of the
 gold format is what makes the dataset reusable across approaches.
+
+Train/validation/test membership is also deliberately external to the gold case.
+Use the [grouped split contract](semantic-dataset-splits.md) to prevent source or
+template-family leakage while preserving reusable labels.
+
+The [blinded annotation workflow](semantic-annotation-workflow.md) can turn an
+approved Stage 1 cluster into an unlabeled task. Only a separate, completed typed
+annotation, and by default its adjudication, is promoted into this gold format;
+existing suggestions and engineering mappings are never copied as expected labels.
