@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from ....models import AsimCatalog, ParameterSlot
+from ....source_normalization import contains_source_phrase
 from ...contracts import (
     ApproachIdentity,
     MappingRequest,
@@ -25,7 +26,7 @@ if TYPE_CHECKING:
 class CaseRetrievalApproach:
     """Transfer labels from similar approved cases without training a model."""
 
-    identity = ApproachIdentity(name="case-retrieval", version="1")
+    identity = ApproachIdentity(name="case-retrieval", version="2")
 
     def __init__(
         self,
@@ -216,7 +217,6 @@ class CaseRetrievalApproach:
         semantics: list[PredictedSourceSemantic],
         mappings: list[PredictedAsimField],
     ) -> None:
-        template = request.input.template.casefold()
         semantic_keys = {
             (semantic.source_kind, semantic.locator.casefold(), semantic.role.casefold())
             for semantic in semantics
@@ -231,7 +231,7 @@ class CaseRetrievalApproach:
             for semantic in case.expected.source_semantics:
                 if semantic.source_kind != "template_constant":
                     continue
-                if semantic.locator.casefold() not in template:
+                if not contains_source_phrase(request.input.template, semantic.locator):
                     continue
                 semantic_key = (
                     "template_constant",

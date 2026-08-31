@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from .models import InputFile, SourceEvent
+from .source_normalization import strip_leading_bom
 
 SUPPORTED_SUFFIXES = frozenset({".log", ".txt"})
 
@@ -53,6 +54,6 @@ def read_events(
 def _read_file(path: Path, relative_path: str, *, encoding: str) -> Iterable[SourceEvent]:
     with path.open("r", encoding=encoding) as handle:
         for line_number, raw_line in enumerate(handle, start=1):
-            text = raw_line.rstrip("\r\n")
+            text = strip_leading_bom(raw_line.rstrip("\r\n"))
             if text.strip():
                 yield SourceEvent(source_file=relative_path, line_number=line_number, text=text)

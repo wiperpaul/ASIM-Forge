@@ -9,7 +9,7 @@ Each line is one self-contained `SemanticMappingCase` with four parts:
 
 | Part | Purpose |
 | --- | --- |
-| `input` | The template, representative events, parameter slots, and source metadata available to every approach. It excludes the existing keyword schema suggestion. |
+| `input` | The template, representative events, parameter slots, and source metadata available to every approach. It excludes the existing provisional cluster schema suggestion. |
 | `expected.source_semantics` | Source-oriented roles for slots, meaningful template constants, or derived concepts. The role vocabulary is intentionally not closed in format version 1. |
 | `expected.asim_fields` | The expected projection from a source-semantic ID to an ASIM field, including a normalized constant when the event meaning comes from static template text. |
 | `provenance` | Whether labels came from human review, adjudication, synthetic data, or an import, plus optional non-provider decision and annotator references. |

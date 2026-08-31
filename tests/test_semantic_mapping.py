@@ -319,6 +319,33 @@ def test_semantic_frame_approach_maps_slots_and_static_meaning() -> None:
     assert event_result.constant_value == "Success"
 
 
+def test_all_approaches_share_structured_identifier_normalization() -> None:
+    reference = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
+    target_input = reference.input.model_copy(
+        update={
+            "template": (
+                "CEF:0|Demo|Gateway|1|connectionAllowed|connectionAllowed|1|"
+                "src=<VAR:IPV4> dst=<VAR:IPV4> dpt=<VAR:NUMBER>"
+            )
+        }
+    )
+    request = MappingRequest(
+        case_id="demo.network.allowed.cef",
+        catalogue_revision=reference.catalogue_revision,
+        input=target_input,
+    )
+
+    direct = DirectLexicalApproach().predict(request, _catalog())
+    frame = SemanticFrameApproach().predict(request, _catalog())
+    retrieval = CaseRetrievalApproach([reference]).predict(request, _catalog())
+
+    expected_fields = {"SrcIpAddr", "DstIpAddr", "DstPortNumber"}
+    assert {field.asim_field for field in direct.asim_fields} == expected_fields
+    assert {field.asim_field for field in frame.asim_fields} >= expected_fields
+    assert {field.asim_field for field in retrieval.asim_fields} >= expected_fields
+    assert {direct.approach.version, frame.approach.version, retrieval.approach.version} == {"2"}
+
+
 def test_retrieval_transfers_a_labelled_case_without_reading_target_gold() -> None:
     reference = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
     target = reference.model_copy(

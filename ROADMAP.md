@@ -70,6 +70,14 @@ by deterministic adapters instead of flattened and rediscovered by DeepParse.
 Original records, decoded structure, transformations, target versions, and label
 provenance must remain inspectable through review and release reports.
 
+The first target-neutral preprocessing slice is now implemented: decoded byte-order
+marks are removed at ingestion, compound identifiers and a bounded source
+vocabulary are normalized consistently, and the key owning a CEF/JSON-style value
+is retained as local slot context. The direct-lexical, semantic-frame, and
+case-retrieval baselines share that versioned behavior. This improves deterministic
+evidence extraction but is not a substitute for the explicit structure adapters
+above.
+
 ## Milestone 1 — Cluster-review walking skeleton (current)
 
 Goal: establish stable clusters, an independent cluster-coherence decision, and
@@ -101,7 +109,7 @@ The architecture rationale and proposed evaluation boundary are recorded in
 - Resolve branches and tags to an immutable Git commit and record both that commit
   and the downloaded content hash in a generated snapshot manifest.
 - Preserve Microsoft's CSV unchanged in the snapshot; parse it into typed fields
-  only at the ASIM Forge boundary.
+  only at the LogLathe boundary.
 - Merge `Common` fields with schema-specific overrides when presenting a target
   schema to suggestion providers.
 - Treat human-readable descriptions and semantic schema versions as separately

@@ -5,31 +5,20 @@ from __future__ import annotations
 import re
 
 from ...models import AsimCatalog, AsimCatalogField, ParameterSlot
+from ...source_normalization import source_tokens, structured_key_before
 from ..contracts import RankedFieldCandidate, RankedSchemaCandidate
 from ..types import SemanticMappingInput
 
-_WORD = re.compile(r"[A-Za-z][A-Za-z0-9]*|[0-9]+")
-_CAMEL = re.compile(r"[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z]?[a-z]+|\d+")
-_ALIASES = {
-    "addr": "address",
-    "dst": "destination",
-    "ipaddr": "ip address",
-    "ipv4": "ip address",
-    "ipv6": "ip address",
-    "num": "number",
-    "src": "source",
-    "usr": "user",
-}
-_CONTEXT_EXPANSIONS = {
-    "from": {"source"},
-    "to": {"destination"},
-    "client": {"source"},
-    "server": {"destination"},
-    "login": {"authentication", "logon"},
-    "logon": {"authentication", "logon"},
-}
 _SCHEMA_KEYWORDS: dict[str, set[str]] = {
-    "Authentication": {"auth", "credential", "login", "logon", "logout", "password"},
+    "Authentication": {
+        "auth",
+        "authentication",
+        "credential",
+        "login",
+        "logon",
+        "logout",
+        "password",
+    },
     "NetworkSession": {
         "connection",
         "destination",
@@ -43,28 +32,23 @@ _SCHEMA_KEYWORDS: dict[str, set[str]] = {
     "AuditEvent": {
         "audit",
         "configuration",
-        "created",
-        "deleted",
-        "modified",
+        "create",
+        "delete",
+        "disable",
+        "enable",
+        "modify",
         "policy",
-        "updated",
+        "update",
     },
 }
 
 
 def tokens(text: str) -> set[str]:
-    result: set[str] = set()
-    for raw in _WORD.findall(text):
-        value = raw.casefold()
-        expanded = _ALIASES.get(value, value)
-        result.update(expanded.split())
-    for value in tuple(result):
-        result.update(_CONTEXT_EXPANSIONS.get(value, set()))
-    return result
+    return source_tokens(text)
 
 
 def name_tokens(text: str) -> set[str]:
-    return tokens(" ".join(_CAMEL.findall(text)))
+    return source_tokens(text)
 
 
 def slot_context(mapping_input: SemanticMappingInput, slot: ParameterSlot) -> str:
@@ -72,6 +56,9 @@ def slot_context(mapping_input: SemanticMappingInput, slot: ParameterSlot) -> st
     if slot.occurrence > len(matches):
         return f"{slot.label} {' '.join(slot.examples)}"
     match = matches[slot.occurrence - 1]
+    structured_key = structured_key_before(mapping_input.template, match.start())
+    if structured_key is not None:
+        return f"{structured_key} {slot.label}"
     before = mapping_input.template[: match.start()].split()[-3:]
     after = mapping_input.template[match.end() :].split()[:2]
     if before and before[-1].casefold() in {"from", "to", "client", "server"}:

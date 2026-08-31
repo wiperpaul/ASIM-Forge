@@ -15,7 +15,7 @@ from .._lexical import rank_fields, rank_schemas, slot_context
 class DirectLexicalApproach:
     """Rank ASIM fields directly from local slot context."""
 
-    identity = ApproachIdentity(name="direct-lexical", version="1")
+    identity = ApproachIdentity(name="direct-lexical", version="2")
 
     def predict(
         self,

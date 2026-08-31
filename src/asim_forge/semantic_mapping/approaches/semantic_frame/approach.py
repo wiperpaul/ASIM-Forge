@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ....models import AsimCatalog, ParameterSlot
+from ....source_normalization import contains_source_phrase
 from ...contracts import (
     ApproachIdentity,
     MappingRequest,
@@ -24,7 +25,7 @@ _STATIC_SEMANTICS = (
 class SemanticFrameApproach:
     """Infer source roles first, then project those roles into ASIM."""
 
-    identity = ApproachIdentity(name="semantic-frame", version="1")
+    identity = ApproachIdentity(name="semantic-frame", version="2")
 
     def predict(
         self,
@@ -71,9 +72,8 @@ class SemanticFrameApproach:
                     )
                 )
 
-        normalized_template = request.input.template.casefold()
         for phrase, role, target_query, constant_value in _STATIC_SEMANTICS:
-            if phrase not in normalized_template:
+            if not contains_source_phrase(request.input.template, phrase):
                 continue
             semantics.append(
                 PredictedSourceSemantic(

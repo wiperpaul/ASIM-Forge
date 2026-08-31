@@ -45,7 +45,7 @@ class SchemaSuggestion(StrictModel):
     schema_name: Literal["Authentication", "NetworkSession", "AuditEvent", "NoFit"]
     confidence: float = Field(ge=0, le=1)
     ranked_scores: list[SchemaScore]
-    method: Literal["keyword-baseline"] = "keyword-baseline"
+    method: Literal["keyword-baseline", "source-concept-v1"] = "keyword-baseline"
 
 
 class ClusterRecord(StrictModel):

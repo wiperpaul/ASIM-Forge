@@ -1,6 +1,6 @@
 # Semantic mapping approach comparison
 
-ASIM Forge compares semantic mapping approaches through one request/prediction
+LogLathe compares semantic mapping approaches through one request/prediction
 boundary while keeping each implementation in its own module:
 
 ```text
@@ -31,12 +31,14 @@ identity, rankings, scores, evidence, and warnings live in
 | `semantic-frame` | `semantic_mapping/approaches/semantic_frame/` | A two-stage benchmark that first names source roles and static meanings, then projects them into the catalogue. Its small lexical normalizers are evaluation baselines, not production vendor rules. |
 | `case-retrieval` | `semantic_mapping/approaches/case_retrieval/` | Retrieves similar labelled cases and transfers their schema, source roles, and target mappings. It excludes the current case by stable case ID, preventing direct target-label leakage. |
 
-Each approach owns a package under `semantic_mapping/approaches/`. Shared
-tokenization and catalogue-ranking primitives live in the private
-`approaches/_lexical.py` module; they do not own provider state or feedback. Adding
-an API, local model, MCP-backed service, retrieval method, or uncertainty-only
-oracle means implementing `SemanticMappingApproach` in a new package and adding its
-factory to the approach registry. Existing cases and metrics remain unchanged.
+Each approach owns a package under `semantic_mapping/approaches/`. Version 2 of the
+three initial approaches shares target-neutral identifier and source-vocabulary
+normalization from `source_normalization.py`; catalogue-ranking primitives remain
+in the private `approaches/_lexical.py` module. Neither layer owns provider state,
+expected labels, or feedback. Adding an API, local model, MCP-backed service,
+retrieval method, or uncertainty-only oracle means implementing
+`SemanticMappingApproach` in a new package and adding its factory to the approach
+registry. Existing cases and metrics remain unchanged.
 
 ## Metrics
 
