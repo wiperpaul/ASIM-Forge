@@ -4,17 +4,25 @@ The release-style benchmark answers a narrow question: did a code or evaluation-
 change alter ASIM Forge's behaviour on a fixed, inspectable corpus? It does not turn
 every upstream security benchmark label into ASIM ground truth.
 
-## Three evaluation tracks
+## Four evaluation tracks
 
 | Track | What is scored | What must not be inferred |
 | --- | --- | --- |
 | `parsing-gold` | Pairwise template-clustering precision, recall, F1, and cluster purity against LogHub `EventId` labels. | Incident detection, ASIM schema selection, and field mapping. |
 | `format-diagnostic` | Event/cluster counts, clusters with parameter slots, and the event-weighted rate receiving a provisional non-`NoFit` keyword suggestion. | Accuracy. These corpora have no adjudicated ASIM answer key. |
+| `schema-hint` | Event- and cluster-weighted schema agreement against an upstream file-level ASIM placement hint. | Independent schema correctness or any field-mapping correctness. The hint was created for parser development, not this benchmark. |
 | `semantic-gold` | Schema ranking, source-role F1, field F1/ranking, exact match, coverage, and edits against ASIM Forge cases. | Production quality when the case set is small, synthetic, or not representative. |
 
 The provisional ASIM-fit diagnostic is deliberately named as such. It measures the
 current keyword baseline's willingness to suggest one of the implemented schemas;
 it does not say that the suggestion is correct.
+
+The schema-hint track is deliberately weaker than semantic gold. Microsoft ASIM
+sample filenames and placement identify the parser schema they were collected for,
+but the paired `IngestedLogs` files are source-table ingestion exports rather than
+normalized parser output. ASIM tester results are aggregate conformance diagnostics,
+not row-level expected mappings. These sources can guide corpus selection and human
+annotation without becoming field labels.
 
 ## Registered small corpora
 
@@ -26,6 +34,9 @@ it does not say that the suggestion is correct.
 | Matryoshka SSH example | [Matryoshka artifact](https://github.com/julien-piet/matryoshka) | Format diagnostic | A small SSH stream from a security-log analytics research artifact. |
 | LogInject benign SSH 500 | [LogInject artifact](https://zenodo.org/records/20436935) | Format diagnostic | Bounded authentication sample from the paper's open artifact. |
 | LogInject benign Apache 500 | LogInject artifact | Format diagnostic | Bounded access-log sample with a different syntax. |
+| ASIM Cisco Firepower Network Session samples | [Microsoft ASIM sample data](https://github.com/Azure/Azure-Sentinel/tree/master/Sample%20Data/ASIM) | Schema hint | Small CEF network-session set with an upstream file-level schema placement. |
+| ASIM CrowdStrike Falcon Authentication samples | Microsoft ASIM sample data | Schema hint | Small CEF authentication set covering another supported baseline schema. |
+| ASIM CrowdStrike FalconHost Audit Event samples | Microsoft ASIM sample data | Schema hint | Small CEF audit set completing the current three-schema baseline boundary. |
 | ASIM semantic smoke cases | This repository | Semantic gold | Exercises the actual schema/role/field evaluation contract. |
 
 The security papers behind Matryoshka and LogInject study objectives such as threat

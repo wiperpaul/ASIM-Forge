@@ -28,7 +28,7 @@ from .models import StrictModel
 from .semantic_annotation import validate_semantic_promotion_artifacts
 from .semantic_mapping.comparison import compare_approaches, compare_split_approaches
 
-Track = Literal["parsing-gold", "format-diagnostic", "semantic-gold"]
+Track = Literal["parsing-gold", "format-diagnostic", "schema-hint", "semantic-gold"]
 
 
 class BenchmarkError(ValueError):
@@ -69,6 +69,7 @@ class CorpusManifest(StrictModel):
     sample_size: int = Field(default=50, ge=1)
     samples_per_cluster: int = Field(default=5, ge=1)
     gold_column: str | None = None
+    schema_hint: str | None = Field(default=None, pattern=r"^[A-Za-z][A-Za-z0-9]*$")
 
     @model_validator(mode="after")
     def validate_track_inputs(self) -> CorpusManifest:
@@ -102,6 +103,11 @@ class CorpusManifest(StrictModel):
                 raise ValueError("parsing-gold corpora cannot truncate inputs")
         elif "gold" in roles or self.gold_column is not None:
             raise ValueError("only parsing-gold corpora may define parsing gold")
+        if self.track == "schema-hint":
+            if self.schema_hint is None:
+                raise ValueError("schema-hint corpora require schema_hint")
+        elif self.schema_hint is not None:
+            raise ValueError("only schema-hint corpora may define schema_hint")
         return self
 
 
@@ -114,6 +120,7 @@ class CorpusSummary(StrictModel):
     system: str
     source: CorpusSource
     resources: list[CorpusResource] = Field(default_factory=list)
+    schema_hint: str | None = None
     fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
@@ -199,6 +206,7 @@ def run_benchmarks(
                 system=manifest.system,
                 source=manifest.source,
                 resources=manifest.resources,
+                schema_hint=manifest.schema_hint,
                 fingerprint=fingerprint,
             )
         )
@@ -268,6 +276,31 @@ def run_benchmarks(
                     )
                 metrics = parsing_metrics(clustering.assignments, gold)
                 primary = "pair_f1"
+            elif manifest.track == "schema-hint":
+                assert manifest.schema_hint is not None
+                matching_clusters = sum(
+                    cluster.schema_suggestion.schema_name == manifest.schema_hint
+                    for cluster in clustering.clusters
+                )
+                matching_events = sum(
+                    cluster.event_count
+                    for cluster in clustering.clusters
+                    if cluster.schema_suggestion.schema_name == manifest.schema_hint
+                )
+                fit_events = sum(
+                    cluster.event_count
+                    for cluster in clustering.clusters
+                    if cluster.schema_suggestion.schema_name != "NoFit"
+                )
+                metrics = {
+                    "cluster_count": len(clustering.clusters),
+                    "provisional_asim_fit_event_rate": round(fit_events / len(events), 6),
+                    "schema_hint_cluster_agreement": round(
+                        matching_clusters / len(clustering.clusters), 6
+                    ),
+                    "schema_hint_event_agreement": round(matching_events / len(events), 6),
+                }
+                primary = "schema_hint_event_agreement"
             else:
                 slot_clusters = sum(
                     bool(cluster.parameter_slots) for cluster in clustering.clusters
@@ -402,6 +435,34 @@ def render_markdown(report: BenchmarkReport) -> str:
             "",
             "These are operational diagnostics only. The upstream security objectives and "
             "labels are not treated as ASIM schema ground truth.",
+            "",
+            "## Upstream ASIM schema hints",
+            "",
+        ]
+    )
+    hint_rows = [row for row in report.results if row.track == "schema-hint"]
+    lines.extend(
+        _table(
+            ["Corpus", "Hint", "Events", "Clusters", "Provisional fit", "Agreement", "Delta"],
+            [
+                [
+                    summaries[row.corpus_id].title,
+                    summaries[row.corpus_id].schema_hint or "unknown",
+                    str(row.item_count),
+                    str(row.metrics["cluster_count"]),
+                    _number(row.metrics["provisional_asim_fit_event_rate"]),
+                    _number(row.metrics["schema_hint_event_agreement"]),
+                    _delta(row.baseline_delta),
+                ]
+                for row in hint_rows
+            ],
+        )
+    )
+    lines.extend(
+        [
+            "",
+            "Agreement uses Microsoft sample placement as a file-level schema hint. It is "
+            "weak upstream supervision, not adjudicated ASIM schema or field ground truth.",
             "",
             "## Adjudicated ASIM mapping",
             "",
