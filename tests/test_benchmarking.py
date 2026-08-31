@@ -14,6 +14,7 @@ from asim_forge.benchmarking import (
     BenchmarkError,
     BenchmarkReport,
     BenchmarkRow,
+    CorpusManifest,
     CorpusResource,
     CorpusSource,
     CorpusSummary,
@@ -25,6 +26,28 @@ from asim_forge.benchmarking import (
     render_markdown,
     run_benchmarks,
 )
+from asim_forge.commands import evaluation as evaluation_command
+
+
+def test_semantic_benchmark_split_requires_frozen_group_evidence() -> None:
+    payload = {
+        "corpus_id": "semantic-split",
+        "title": "Semantic split",
+        "track": "semantic-gold",
+        "objective": "ASIM correctness",
+        "system": "test",
+        "interpretation": "Held-out evaluation.",
+        "source": {
+            "project": "test",
+            "url": "https://invalid.example",
+            "terms": "test",
+        },
+        "cases": "cases.jsonl",
+        "split": "split.json",
+    }
+
+    with pytest.raises(ValueError, match="case_groups and promotion_manifest"):
+        CorpusManifest.model_validate(payload)
 
 
 def test_checked_corpus_registry_has_separate_objective_tracks() -> None:
@@ -224,7 +247,13 @@ def test_semantic_corpus_uses_the_shared_comparison_contract(
     monkeypatch.setattr(
         benchmarking,
         "compare_approaches",
-        lambda cases, loaded_catalog: SimpleNamespace(approaches=[evaluation]),
+        lambda cases, loaded_catalog: SimpleNamespace(
+            approaches=[evaluation],
+            case_count=1,
+            reference_case_count=1,
+            split_id=None,
+            evaluation_partition=None,
+        ),
     )
 
     report = run_benchmarks(
@@ -236,6 +265,88 @@ def test_semantic_corpus_uses_the_shared_comparison_contract(
     assert report.catalogue_revision == "a" * 40
     assert report.results[0].metrics["field_micro_f1"] == 0.75
     assert report.warnings == ["semantic/test-approach: small fixture"]
+
+
+def test_semantic_benchmark_verifies_frozen_groups_before_split_comparison(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    corpus = tmp_path / "registry" / "semantic-split"
+    corpus.mkdir(parents=True)
+    for name in (
+        "cases.jsonl",
+        "split.json",
+        "case-groups.jsonl",
+        "promotion-manifest.json",
+    ):
+        (corpus / name).write_text(name, encoding="utf-8")
+    manifest = {
+        "corpus_id": "semantic-split",
+        "title": "Semantic split",
+        "track": "semantic-gold",
+        "objective": "ASIM correctness",
+        "system": "test",
+        "interpretation": "Held-out labels.",
+        "source": {
+            "project": "test",
+            "url": "https://invalid.example",
+            "terms": "test",
+        },
+        "cases": "cases.jsonl",
+        "split": "split.json",
+        "case_groups": "case-groups.jsonl",
+        "promotion_manifest": "promotion-manifest.json",
+        "evaluation_partition": "test",
+    }
+    (corpus / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    catalog = SimpleNamespace(manifest=SimpleNamespace(resolved_revision="a" * 40))
+    split = object()
+    groups = [object()]
+    calls: list[str] = []
+    metrics = {
+        "schema_top1_accuracy": 1.0,
+        "source_micro_f1": 0.75,
+        "field_micro_f1": 0.5,
+        "mapping_exact_match": 0.25,
+    }
+    evaluation = SimpleNamespace(
+        approach=SimpleNamespace(name="case-retrieval"),
+        metrics=SimpleNamespace(model_dump=lambda mode: metrics),
+        warnings=[],
+    )
+    monkeypatch.setattr(benchmarking, "load_catalog", lambda path: catalog)
+    monkeypatch.setattr(benchmarking, "load_semantic_mapping_cases", lambda path: [object()])
+    monkeypatch.setattr(benchmarking, "load_semantic_dataset_split", lambda path: split)
+    monkeypatch.setattr(
+        benchmarking,
+        "validate_semantic_promotion_artifacts",
+        lambda cases, case_groups, promotion: groups,
+    )
+    monkeypatch.setattr(
+        benchmarking,
+        "validate_semantic_case_groups",
+        lambda cases, loaded_split, loaded_groups: calls.append("validated"),
+    )
+    monkeypatch.setattr(
+        benchmarking,
+        "compare_split_approaches",
+        lambda cases, loaded_catalog, loaded_split, partition: SimpleNamespace(
+            approaches=[evaluation],
+            case_count=1,
+            reference_case_count=2,
+            split_id="source-family.v1",
+            evaluation_partition=partition,
+        ),
+    )
+
+    report = run_benchmarks(
+        tmp_path / "registry",
+        tmp_path / "output",
+        catalog_dir=tmp_path / "catalog",
+    )
+
+    assert calls == ["validated"]
+    assert report.results[0].split_id == "source-family.v1"
+    assert report.results[0].reference_item_count == 2
 
 
 def test_baseline_delta_requires_same_corpus_fingerprint() -> None:
@@ -325,7 +436,7 @@ def test_cli_runs_registered_benchmark(
             )
         ],
     )
-    monkeypatch.setattr(cli, "run_benchmarks", lambda *args, **kwargs: report)
+    monkeypatch.setattr(evaluation_command, "run_benchmarks", lambda *args, **kwargs: report)
 
     cli.main(["evaluation", "benchmark", "registry", "--output", "output"])
 

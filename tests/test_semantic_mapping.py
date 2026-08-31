@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from asim_forge import cli
+from asim_forge.commands import evaluation as evaluation_command
 from asim_forge.evaluation import SemanticMappingCase, load_semantic_mapping_cases
 from asim_forge.models import AsimCatalog, AsimCatalogField, AsimCatalogManifest
 from asim_forge.semantic_mapping.approaches.case_retrieval import CaseRetrievalApproach
@@ -372,6 +373,10 @@ def test_comparison_reports_all_registered_approaches() -> None:
     assert retrieval.metrics.coverage == 0
     assert any("smoke test" in warning for warning in evaluations["semantic-frame"].warnings)
     assert any("no mapped predictions" in warning for warning in retrieval.warnings)
+    assert any("No explicit grouped split" in warning for warning in retrieval.warnings)
+    assert not any(
+        "No explicit grouped split" in warning for warning in evaluations["semantic-frame"].warnings
+    )
     assert any(
         "No labelled reference" in warning
         for prediction in retrieval.predictions
@@ -430,7 +435,7 @@ def test_cli_compares_a_selected_approach(
     capsys: pytest.CaptureFixture[str],
     tmp_path: Path,
 ) -> None:
-    monkeypatch.setattr(cli, "load_catalog", lambda _: _catalog())
+    monkeypatch.setattr(evaluation_command, "load_catalog", lambda _: _catalog())
     output = tmp_path / "comparison.json"
 
     cli.main(

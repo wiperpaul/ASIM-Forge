@@ -6,15 +6,14 @@ import argparse
 from collections.abc import Sequence
 from pathlib import Path
 
-from .benchmarking import BenchmarkError, run_benchmarks
-from .catalog import load_catalog, sync_catalog
+from .benchmarking import BenchmarkError
+from .catalog import sync_catalog
+from .commands.evaluation import register_evaluation_parser, run_evaluation_command
 from .compiler import compile_reviews
-from .evaluation import EvaluationError, load_semantic_mapping_cases
+from .evaluation import EvaluationError
 from .ingestion import InputError
 from .pipeline import build_review_bundle
 from .reviews import ReviewError
-from .semantic_mapping import APPROACH_NAMES
-from .semantic_mapping.comparison import compare_approaches, write_comparison_report
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -60,62 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Azure-Sentinel branch, tag, or full commit SHA (default: master)",
     )
 
-    evaluation = subparsers.add_parser(
-        "evaluation",
-        help="Manage provider-neutral semantic mapping evaluation cases",
-    )
-    evaluation_subparsers = evaluation.add_subparsers(
-        dest="evaluation_command",
-        required=True,
-    )
-    evaluation_validate = evaluation_subparsers.add_parser(
-        "validate",
-        help="Validate canonical semantic mapping case JSONL",
-    )
-    evaluation_validate.add_argument("cases", type=Path, help="Semantic mapping case JSONL")
-    evaluation_compare = evaluation_subparsers.add_parser(
-        "compare",
-        help="Compare separated semantic mapping approaches against the same cases",
-    )
-    evaluation_compare.add_argument("cases", type=Path, help="Semantic mapping case JSONL")
-    evaluation_compare.add_argument(
-        "--catalog",
-        type=Path,
-        required=True,
-        help="Directory containing a pinned ASIM catalogue snapshot",
-    )
-    evaluation_compare.add_argument(
-        "--approach",
-        action="append",
-        choices=APPROACH_NAMES,
-        dest="approaches",
-        help="Approach to compare; repeat to select several (default: all)",
-    )
-    evaluation_compare.add_argument(
-        "--output",
-        type=Path,
-        help="Optional path for the complete JSON comparison report",
-    )
-    evaluation_benchmark = evaluation_subparsers.add_parser(
-        "benchmark",
-        help="Run the registered parsing, security-format, and ASIM evaluation corpora",
-    )
-    evaluation_benchmark.add_argument(
-        "registry", type=Path, help="Directory containing corpus manifest folders"
-    )
-    evaluation_benchmark.add_argument(
-        "--catalog",
-        type=Path,
-        help="Pinned ASIM catalogue (required when semantic-gold corpora are present)",
-    )
-    evaluation_benchmark.add_argument("--output", type=Path, default=Path("artifacts/evaluation"))
-    evaluation_benchmark.add_argument("--cache", type=Path, help="Optional shared download cache")
-    evaluation_benchmark.add_argument(
-        "--revision", default="unknown", help="Source revision recorded in the report"
-    )
-    evaluation_benchmark.add_argument(
-        "--baseline", type=Path, help="Previous benchmark-report.json for comparable deltas"
-    )
+    register_evaluation_parser(subparsers)
     return parser
 
 
@@ -156,51 +100,8 @@ def main(argv: Sequence[str] | None = None) -> None:
                 f"{catalog_manifest.field_count} field definitions from "
                 f"Azure-Sentinel@{catalog_manifest.resolved_revision} into {args.output}"
             )
-        elif args.evaluation_command == "validate":
-            cases = load_semantic_mapping_cases(args.cases)
-            print(f"Validated {len(cases)} provider-neutral semantic mapping case(s)")
-        elif args.evaluation_command == "compare":
-            cases = load_semantic_mapping_cases(args.cases)
-            report = compare_approaches(
-                cases,
-                load_catalog(args.catalog),
-                args.approaches,
-            )
-            if args.output is not None:
-                write_comparison_report(args.output, report)
-            print(
-                "approach          schema@1  schema@3  field-f1  field-mrr  "
-                "field-r@gt  role-f1  exact  coverage  edits"
-            )
-            for evaluation in report.approaches:
-                metrics = evaluation.metrics
-                print(
-                    f"{evaluation.approach.name:<17} "
-                    f"{metrics.schema_top1_accuracy:>8.3f}  "
-                    f"{metrics.schema_top3_hit_rate:>8.3f}  "
-                    f"{metrics.field_micro_f1:>8.3f}  "
-                    f"{metrics.field_mrr:>9.3f}  "
-                    f"{metrics.field_recall_at_gold:>10.3f}  "
-                    f"{metrics.source_micro_f1:>7.3f}  "
-                    f"{metrics.mapping_exact_match:>5.3f}  "
-                    f"{metrics.coverage:>8.3f}  "
-                    f"{metrics.mean_mapping_edits:>5.2f}"
-                )
-                for warning in evaluation.warnings:
-                    print(f"  warning: {warning}")
         else:
-            report = run_benchmarks(
-                args.registry,
-                args.output,
-                catalog_dir=args.catalog,
-                cache_dir=args.cache,
-                revision=args.revision,
-                baseline_path=args.baseline,
-            )
-            print(
-                f"Evaluated {len(report.corpora)} corpora and wrote "
-                f"{len(report.results)} result row(s) to {args.output}"
-            )
+            run_evaluation_command(args)
     except (
         BenchmarkError,
         EvaluationError,
