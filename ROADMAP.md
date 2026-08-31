@@ -1,6 +1,7 @@
-# ASIM Forge roadmap
+# LogLathe roadmap
 
-ASIM Forge separates review decisions in the data model, but it should not force
+LogLathe is ASIM-first while the initial workflow and evidence base mature. It
+separates review decisions in the data model, but it should not force
 those decisions into disconnected human sessions. The intended experience is a
 progressive review: prepare suggestions before the reviewer arrives, record each
 decision as its own auditable checkpoint, and let an eligible reviewer continue
@@ -19,6 +20,55 @@ to the next checkpoint while the examples are still fresh.
   a governance boundary, not necessarily a page or a separate work queue.
 - Do not let an ASIM suggestion influence the independent cluster-coherence
   decision. Reveal it after that decision, or clearly isolate it until then.
+- Keep adjudicated gold, upstream hints, parser-derived references, and unlabelled
+  diagnostics in separate evaluation tracks. Never turn provenance into accuracy
+  by changing a label in a manifest.
+
+## Direction — ASIM first, target neutral
+
+The first complete workflow targets ASIM because its schemas, parser catalogue,
+review process, and Microsoft Sentinel output give the project a concrete boundary.
+The long-term product boundary is security-log understanding and normalization,
+not one target schema. OCSF is the next intended target once the ASIM evaluation
+loop is credible; adding it must not weaken or reinterpret existing ASIM results.
+
+The stable centre should be a target-neutral source-semantic frame. Input and
+normalization concerns sit on either side:
+
+```text
+unstructured text -> DeepParse ---------+
+CEF/JSON/CSV -> structure adapter -------+-> source semantics -> ASIM target adapter
+                                                +-----------> OCSF target adapter
+```
+
+This direction requires explicit seams rather than replacing ASIM names throughout
+the codebase in one large refactor:
+
+- introduce versioned normalization-target and catalogue interfaces while keeping
+  the ASIM adapter as the default implementation;
+- represent target fields as paths with target-specific constraints, because ASIM
+  columns are flat while OCSF includes nested objects, arrays, class/type UIDs, and
+  enumerated values;
+- keep source roles and evidence independent of ASIM and OCSF field names;
+- evaluate each target against its own pinned catalogue and labels, never by
+  comparing raw ASIM and OCSF scores as though the tasks had identical granularity;
+- preserve a compatibility reader for existing ASIM fixtures and generated
+  artefacts before changing the public package or CLI contract.
+
+Known data challenges are part of the design. Microsoft `RawLogs` and
+`IngestedLogs` samples are useful, but ingestion output is not normalized ASIM
+output. ASIM schema/data tester CSVs contain aggregate conformance findings rather
+than row-level expected mappings. Existing parsers can provide silver reference
+mappings, but evaluating against the same parsers is reproduction, not independent
+correctness, and can inherit their defects. OCSF's paired examples are closer to
+the desired raw-to-normalized shape, but upstream explicitly describes them as
+informative rather than gold. Larger converter-generated corpora such as SETC need
+the same silver-label treatment.
+
+Structured sources add another challenge. JSON and CEF fields should be preserved
+by deterministic adapters instead of flattened and rediscovered by DeepParse.
+Original records, decoded structure, transformations, target versions, and label
+provenance must remain inspectable through review and release reports.
 
 ## Milestone 1 — Cluster-review walking skeleton (current)
 
@@ -74,6 +124,21 @@ The architecture rationale and proposed evaluation boundary are recorded in
   production suggestion provider.
 - Use an external grouped dataset split so approved-case retrieval sees only
   reference partitions and cannot learn from held-out source/template families.
+
+### ASIM-first evidence ladder
+
+- Run commit-pinned Microsoft ASIM parser-development raw samples in a dedicated
+  `schema-hint` track. Score agreement with their file-level schema placement only;
+  do not claim field-mapping accuracy from it.
+- Use the small Authentication, NetworkSession, and AuditEvent CEF pilot to expose
+  obvious baseline gaps before expanding to more schemas or structured formats.
+- Treat mappings extracted from existing Microsoft parsers as `upstream-silver`
+  when that track is implemented. Show them to reviewers as attributable reference
+  material and never promote them automatically into gold.
+- Promote selected clusters into `semantic-gold` only through the frozen queue,
+  independent review, and adjudication workflow.
+- Expand by source/template family, keeping grouped validation and test labels
+  locked before approach comparison.
 
 ### Progressive review experience
 

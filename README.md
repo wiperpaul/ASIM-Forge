@@ -1,6 +1,6 @@
-# ASIM Forge
+# LogLathe
 
-ASIM Forge is an early-stage, human-in-the-loop toolkit for turning raw security
+LogLathe is an early-stage, human-in-the-loop toolkit for turning raw security
 logs into auditable Microsoft Advanced Security Information Model (ASIM) parser
 candidates. It also provides a controlled evaluation harness for comparing ways to
 suggest ASIM schemas and field mappings before those suggestions reach a reviewer.
@@ -24,7 +24,7 @@ Sentinel parser.
 
 ## What exists today
 
-ASIM Forge currently has two connected areas of work.
+LogLathe currently has two connected areas of work.
 
 ### Parser engineering walking skeleton
 
@@ -96,17 +96,17 @@ future API-backed approaches comparable without changing the fixtures or metrics
 | Corpus benchmark reports and evaluation prereleases | Implemented |
 | Automatic production deployment | Not implemented |
 
-ASIM Forge is pre-alpha. The contracts and evaluation boundaries are intentional,
+LogLathe is pre-alpha. The contracts and evaluation boundaries are intentional,
 but the end-to-end reviewer experience is still under construction.
 
 ## Quick start
 
-ASIM Forge supports Python 3.11 through 3.14 and uses
+LogLathe supports Python 3.11 through 3.14 and uses
 [uv](https://docs.astral.sh/uv/) for dependency management.
 
 ```powershell
-git clone https://github.com/wiperpaul/ASIM-Forge.git
-Set-Location ASIM-Forge
+git clone https://github.com/wiperpaul/LogLathe.git
+Set-Location LogLathe
 uv sync --locked
 ```
 
@@ -170,7 +170,7 @@ future UI integration; see
 
 ## Work with the ASIM catalogue
 
-ASIM Forge consumes the machine-readable field catalogue used by Microsoft's
+LogLathe consumes the machine-readable field catalogue used by Microsoft's
 `ASimSchemaTester`. It does not maintain a hand-copied list of ASIM fields.
 
 ```powershell
@@ -277,11 +277,12 @@ boundary required for retrieval comparisons.
 
 ## Run the corpus benchmark
 
-The checked corpus registry combines three small LogHub datasets with security-paper
-artifacts and the adjudicated ASIM fixture. The report keeps their objectives
-separate: LogHub template labels score clustering, paper artifacts provide
-format/stress diagnostics, and only ASIM-labelled cases score schema and field
-correctness.
+The checked corpus registry combines three small LogHub datasets, security-paper
+artifacts, commit-pinned Microsoft ASIM parser-development samples, and the
+adjudicated ASIM fixture. The report keeps their objectives separate: LogHub
+template labels score clustering, paper artifacts provide format/stress
+diagnostics, Microsoft sample placement provides weak file-level schema hints, and
+only ASIM-labelled cases score adjudicated schema and field correctness.
 
 ```powershell
 uv run asim-forge evaluation benchmark evaluation/corpora `
@@ -344,12 +345,12 @@ sanitized evaluation cases should be committed.
   decision revisions are recorded at their respective boundaries.
 - **Compilation is deterministic.** The same complete cluster and review contracts
   produce the same parser specification and KQL candidate.
-- **Deployment is out of scope.** ASIM Forge neither connects to a Sentinel workspace
+- **Deployment is out of scope.** LogLathe neither connects to a Sentinel workspace
   nor promotes generated KQL automatically.
 
 The clustering adapter uses
 [DeepParse v1.0.0](https://github.com/NightBaRron1412/DeepParse/tree/v1.0.0), pinned
-to commit `b53c29b379be5ab834ff990154297ef8fea8d98a`. ASIM Forge confines that
+to commit `b53c29b379be5ab834ff990154297ef8fea8d98a`. LogLathe confines that
 dependency to the clustering boundary and uses its deterministic offline mask
 bundle; the current build workflow does not download or invoke an LLM.
 
@@ -416,6 +417,6 @@ customer data, or other sensitive telemetry.
 
 ## Licence
 
-ASIM Forge is licensed under GPL-3.0-or-later. DeepParse remains Apache-2.0 and is
+LogLathe is licensed under GPL-3.0-or-later. DeepParse remains Apache-2.0 and is
 not vendored. Potato is an optional, separately installed GPL dependency. See
 [`LICENSE`](LICENSE) and [`THIRD_PARTY_NOTICES`](THIRD_PARTY_NOTICES).

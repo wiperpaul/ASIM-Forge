@@ -1,0 +1,22 @@
+{
+  "format_version": "1",
+  "corpus_id": "asim-crowdstrike-falconhost-audit",
+  "title": "ASIM CrowdStrike FalconHost Audit Event samples",
+  "track": "schema-hint",
+  "objective": "Schema-suggestion agreement on Microsoft parser-development sample logs",
+  "system": "asim-crowdstrike-falconhost-audit",
+  "interpretation": "AuditEvent is a weak file-level hint from upstream sample placement. It is not independently adjudicated schema or field-mapping gold.",
+  "source": {
+    "project": "Microsoft Sentinel ASIM sample data",
+    "url": "https://github.com/Azure/Azure-Sentinel/tree/027a0f9338bfabcb27b784571b771c54572ebf01/Sample%20Data/ASIM",
+    "terms": "MIT-licensed Azure-Sentinel repository; samples are sanitized upstream. Retain provenance and review upstream terms before redistribution."
+  },
+  "resources": [
+    {
+      "role": "input",
+      "url": "https://raw.githubusercontent.com/Azure/Azure-Sentinel/027a0f9338bfabcb27b784571b771c54572ebf01/Sample%20Data/ASIM/CrowdStrike_FalconHost_ASimAuditEvent_RawLogs.txt",
+      "sha256": "bed1475c8d99ab31e42e947f29be4021ee8e7c8ad9407c1500655b423cf7953f"
+    }
+  ],
+  "schema_hint": "AuditEvent"
+}

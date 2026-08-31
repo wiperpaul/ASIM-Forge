@@ -50,13 +50,47 @@ def test_semantic_benchmark_split_requires_frozen_group_evidence() -> None:
         CorpusManifest.model_validate(payload)
 
 
+def test_schema_hint_track_requires_an_exclusive_file_level_hint() -> None:
+    payload = {
+        "corpus_id": "schema-hint",
+        "title": "Schema hint",
+        "track": "schema-hint",
+        "objective": "Weak schema supervision",
+        "system": "test",
+        "interpretation": "Not gold.",
+        "source": {
+            "project": "test",
+            "url": "https://invalid.example",
+            "terms": "test",
+        },
+        "resources": [
+            {
+                "role": "input",
+                "url": "https://invalid.example/log",
+                "sha256": "a" * 64,
+            }
+        ],
+    }
+
+    with pytest.raises(ValueError, match="require schema_hint"):
+        CorpusManifest.model_validate(payload)
+
+    payload["schema_hint"] = "Authentication"
+    assert CorpusManifest.model_validate(payload).schema_hint == "Authentication"
+
+    payload["track"] = "format-diagnostic"
+    with pytest.raises(ValueError, match="only schema-hint"):
+        CorpusManifest.model_validate(payload)
+
+
 def test_checked_corpus_registry_has_separate_objective_tracks() -> None:
     loaded = load_corpus_manifests(Path("evaluation/corpora"))
 
     tracks = [manifest.track for _, manifest, _ in loaded]
-    assert len(loaded) == 7
+    assert len(loaded) == 10
     assert tracks.count("parsing-gold") == 3
     assert tracks.count("format-diagnostic") == 3
+    assert tracks.count("schema-hint") == 3
     assert tracks.count("semantic-gold") == 1
     assert all(len(fingerprint) == 64 for _, _, fingerprint in loaded)
 
@@ -205,6 +239,55 @@ def test_local_format_corpus_reports_diagnostics_without_accuracy(tmp_path: Path
     assert report.results[0].track == "format-diagnostic"
     assert "cluster_count" in metrics
     assert "pair_f1" not in metrics
+
+
+def test_local_schema_hint_corpus_reports_weak_agreement_separately(tmp_path: Path) -> None:
+    logs = b"user login accepted from 192.0.2.1\nuser login accepted from 192.0.2.2\n"
+    digest = hashlib.sha256(logs).hexdigest()
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / f"{digest}.blob").write_bytes(logs)
+    corpus = tmp_path / "registry" / "schema-hint"
+    corpus.mkdir(parents=True)
+    manifest = {
+        "format_version": "1",
+        "corpus_id": "schema-hint",
+        "title": "Authentication schema hint",
+        "track": "schema-hint",
+        "objective": "Exercise weak schema supervision",
+        "system": "schema-hint",
+        "interpretation": "File-level upstream hint, not gold.",
+        "source": {
+            "project": "test",
+            "url": "https://invalid.example",
+            "terms": "test fixture",
+        },
+        "resources": [
+            {
+                "role": "input",
+                "url": "https://invalid.example/log",
+                "sha256": digest,
+            }
+        ],
+        "schema_hint": "Authentication",
+    }
+    (corpus / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    report = run_benchmarks(
+        tmp_path / "registry",
+        tmp_path / "output",
+        catalog_dir=None,
+        cache_dir=cache,
+    )
+
+    result = report.results[0]
+    assert result.track == "schema-hint"
+    assert result.primary_metric == "schema_hint_event_agreement"
+    assert result.metrics["schema_hint_event_agreement"] == 1.0
+    assert report.corpora[0].schema_hint == "Authentication"
+    markdown = (tmp_path / "output" / "benchmark-report.md").read_text(encoding="utf-8")
+    assert "Upstream ASIM schema hints" in markdown
+    assert "weak upstream supervision" in markdown
 
 
 def test_semantic_corpus_uses_the_shared_comparison_contract(
