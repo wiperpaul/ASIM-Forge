@@ -72,6 +72,8 @@ The architecture rationale and proposed evaluation boundary are recorded in
 - Compare direct lexical, source-frame, and approved-case retrieval approaches
   through the same prediction contract and evaluation harness before selecting a
   production suggestion provider.
+- Use an external grouped dataset split so approved-case retrieval sees only
+  reference partitions and cannot learn from held-out source/template families.
 
 ### Progressive review experience
 
@@ -151,3 +153,6 @@ release package with explicit ownership and no implicit deployment.
   that anchoring does not damage cluster-review quality.
 - Requiring the same person to perform cluster, ASIM, and release review.
 - Treating generated KQL as production-ready without validation and release gates.
+- Extending the frozen DeepParse path for structured and multiline formats such as
+  JSON, CEF/LEEF, syslog variants, stack traces, and system-specific records; track
+  this separately in [the input-enrichment backlog](docs/log-input-enrichment-backlog.md).

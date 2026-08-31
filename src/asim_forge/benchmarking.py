@@ -19,9 +19,14 @@ from pydantic import Field, model_validator
 from .catalog import load_catalog
 from .clustering import DeepParseClusterer
 from .evaluation import load_semantic_mapping_cases
+from .evaluation_splits import (
+    load_semantic_dataset_split,
+    validate_semantic_case_groups,
+)
 from .ingestion import read_events
 from .models import StrictModel
-from .semantic_mapping.comparison import compare_approaches
+from .semantic_annotation import validate_semantic_promotion_artifacts
+from .semantic_mapping.comparison import compare_approaches, compare_split_approaches
 
 Track = Literal["parsing-gold", "format-diagnostic", "semantic-gold"]
 
@@ -56,6 +61,10 @@ class CorpusManifest(StrictModel):
     source: CorpusSource
     resources: list[CorpusResource] = Field(default_factory=list)
     cases: str | None = None
+    split: str | None = None
+    case_groups: str | None = None
+    promotion_manifest: str | None = None
+    evaluation_partition: Literal["validation", "test"] | None = None
     max_events: int | None = Field(default=None, ge=1)
     sample_size: int = Field(default=50, ge=1)
     samples_per_cluster: int = Field(default=5, ge=1)
@@ -67,8 +76,25 @@ class CorpusManifest(StrictModel):
         if self.track == "semantic-gold":
             if self.cases is None or self.resources:
                 raise ValueError("semantic-gold corpora require cases and no remote resources")
+            if self.split is None and self.evaluation_partition is not None:
+                raise ValueError("evaluation_partition requires a semantic split")
+            if self.split is None and (
+                self.case_groups is not None or self.promotion_manifest is not None
+            ):
+                raise ValueError("case_groups and promotion_manifest require a semantic split")
+            if self.split is not None and (
+                self.case_groups is None or self.promotion_manifest is None
+            ):
+                raise ValueError("semantic splits require case_groups and promotion_manifest")
         elif self.cases is not None or roles.count("input") != 1:
             raise ValueError("log corpora require exactly one input resource and no cases")
+        elif (
+            self.split is not None
+            or self.case_groups is not None
+            or self.promotion_manifest is not None
+            or self.evaluation_partition is not None
+        ):
+            raise ValueError("only semantic-gold corpora may define a split")
         if self.track == "parsing-gold":
             if roles.count("gold") != 1 or self.gold_column is None:
                 raise ValueError("parsing-gold corpora require one gold resource and gold_column")
@@ -98,6 +124,9 @@ class BenchmarkRow(StrictModel):
     item_count: int = Field(ge=1)
     metrics: dict[str, float | int]
     primary_metric: str
+    split_id: str | None = None
+    evaluation_partition: Literal["validation", "test"] | None = None
+    reference_item_count: int | None = Field(default=None, ge=1)
     baseline_delta: float | None = None
 
 
@@ -130,6 +159,12 @@ def load_corpus_manifests(root: Path) -> list[tuple[Path, CorpusManifest, str]]:
         if manifest.cases is not None:
             cases_path = _relative_file(path, manifest.cases)
             fingerprint_input += cases_path.read_bytes()
+        if manifest.split is not None:
+            split_path = _relative_file(path, manifest.split)
+            fingerprint_input += split_path.read_bytes()
+            assert manifest.case_groups is not None and manifest.promotion_manifest is not None
+            fingerprint_input += _relative_file(path, manifest.case_groups).read_bytes()
+            fingerprint_input += _relative_file(path, manifest.promotion_manifest).read_bytes()
         loaded.append((path, manifest, hashlib.sha256(fingerprint_input).hexdigest()))
     return loaded
 
@@ -170,7 +205,23 @@ def run_benchmarks(
         if manifest.track == "semantic-gold":
             assert catalog is not None and manifest.cases is not None
             cases = load_semantic_mapping_cases(_relative_file(path, manifest.cases))
-            comparison = compare_approaches(cases, catalog)
+            if manifest.split is None:
+                comparison = compare_approaches(cases, catalog)
+            else:
+                assert manifest.case_groups is not None and manifest.promotion_manifest is not None
+                split = load_semantic_dataset_split(_relative_file(path, manifest.split))
+                groups = validate_semantic_promotion_artifacts(
+                    _relative_file(path, manifest.cases),
+                    _relative_file(path, manifest.case_groups),
+                    _relative_file(path, manifest.promotion_manifest),
+                )
+                validate_semantic_case_groups(cases, split, groups)
+                comparison = compare_split_approaches(
+                    cases,
+                    catalog,
+                    split,
+                    manifest.evaluation_partition or "test",
+                )
             for evaluation in comparison.approaches:
                 metrics = evaluation.metrics.model_dump(mode="json")
                 results.append(
@@ -178,9 +229,16 @@ def run_benchmarks(
                         corpus_id=manifest.corpus_id,
                         track=manifest.track,
                         approach=evaluation.approach.name,
-                        item_count=len(cases),
+                        item_count=comparison.case_count,
                         metrics=metrics,
                         primary_metric="field_micro_f1",
+                        split_id=comparison.split_id,
+                        evaluation_partition=comparison.evaluation_partition,
+                        reference_item_count=(
+                            comparison.reference_case_count
+                            if comparison.split_id is not None
+                            else None
+                        ),
                     )
                 )
                 warnings.extend(
@@ -352,12 +410,31 @@ def render_markdown(report: BenchmarkReport) -> str:
     semantic_rows = [row for row in report.results if row.track == "semantic-gold"]
     lines.extend(
         _table(
-            ["Corpus", "Approach", "Cases", "Schema@1", "Role F1", "Field F1", "Exact", "Delta"],
+            [
+                "Corpus",
+                "Split",
+                "Approach",
+                "Refs/cases",
+                "Schema@1",
+                "Role F1",
+                "Field F1",
+                "Exact",
+                "Delta",
+            ],
             [
                 [
                     summaries[row.corpus_id].title,
+                    (
+                        f"{row.split_id}:{row.evaluation_partition}"
+                        if row.split_id is not None
+                        else "—"
+                    ),
                     row.approach,
-                    str(row.item_count),
+                    (
+                        f"{row.reference_item_count}/{row.item_count}"
+                        if row.reference_item_count is not None
+                        else f"—/{row.item_count}"
+                    ),
                     _number(row.metrics["schema_top1_accuracy"]),
                     _number(row.metrics["source_micro_f1"]),
                     _number(row.metrics["field_micro_f1"]),
