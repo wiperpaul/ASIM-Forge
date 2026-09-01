@@ -104,15 +104,15 @@ def evaluate_predictions(
 
         expected_sources = _expected_source_set(case)
         predicted_sources = _predicted_source_set(prediction)
-        tp, fp, fn, f1 = _set_scores(expected_sources, predicted_sources)
+        tp, fp, fn, f1 = set_scores(expected_sources, predicted_sources)
         source_tp += tp
         source_fp += fp
         source_fn += fn
         source_case_f1.append(f1)
 
-        expected_fields = _expected_field_set(case)
-        predicted_fields = _predicted_field_set(prediction)
-        tp, fp, fn, f1 = _set_scores(expected_fields, predicted_fields)
+        expected_fields = expected_field_set(case)
+        predicted_fields = predicted_field_set(prediction)
+        tp, fp, fn, f1 = set_scores(expected_fields, predicted_fields)
         field_tp += tp
         field_fp += fp
         field_fn += fn
@@ -199,7 +199,7 @@ def _predicted_source_set(
     }
 
 
-def _expected_field_set(case: SemanticMappingCase) -> set[tuple[str, str, str, Any]]:
+def expected_field_set(case: SemanticMappingCase) -> set[tuple[str, str, str, Any]]:
     semantics = {semantic.semantic_id: semantic for semantic in case.expected.source_semantics}
     return {
         (
@@ -212,7 +212,7 @@ def _expected_field_set(case: SemanticMappingCase) -> set[tuple[str, str, str, A
     }
 
 
-def _predicted_field_set(
+def predicted_field_set(
     prediction: SemanticMappingPrediction,
 ) -> set[tuple[str, str, str, Any]]:
     return {
@@ -301,7 +301,7 @@ def _field_recall_at_ground_truth(
     return round(len(expected & top_at_gold) / len(expected), 6)
 
 
-def _set_scores(expected: set[Any], predicted: set[Any]) -> tuple[int, int, int, float]:
+def set_scores(expected: set[Any], predicted: set[Any]) -> tuple[int, int, int, float]:
     if not expected and not predicted:
         return 0, 0, 0, 1.0
     tp = len(expected & predicted)

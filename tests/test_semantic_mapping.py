@@ -1,11 +1,12 @@
 from pathlib import Path
 
 import pytest
+from semantic_fixtures import EXAMPLE_CASES, build_catalog
 
 from asim_forge import cli
 from asim_forge.commands import evaluation as evaluation_command
 from asim_forge.evaluation import SemanticMappingCase, load_semantic_mapping_cases
-from asim_forge.models import AsimCatalog, AsimCatalogField, AsimCatalogManifest
+from asim_forge.models import AsimCatalog
 from asim_forge.semantic_mapping.approaches.case_retrieval import CaseRetrievalApproach
 from asim_forge.semantic_mapping.approaches.direct_lexical import DirectLexicalApproach
 from asim_forge.semantic_mapping.approaches.priors import FieldFrequencyPriorApproach
@@ -25,8 +26,6 @@ from asim_forge.semantic_mapping.field_ranking import (
     score_candidates,
 )
 from asim_forge.semantic_mapping.metrics import EvaluationError, evaluate_predictions
-
-EXAMPLE_CASES = Path("examples/evaluation/semantic-mapping-cases.jsonl")
 
 
 def _request() -> MappingRequest:
@@ -72,50 +71,7 @@ def _prediction_payload() -> dict[str, object]:
 
 
 def _catalog() -> AsimCatalog:
-    case = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
-    fields = [
-        AsimCatalogField(
-            name="EventResult",
-            kql_type="string",
-            field_class="Recommended",
-            schema_name="Common",
-            logical_type="Event result",
-        ),
-        AsimCatalogField(
-            name="SrcIpAddr",
-            kql_type="string",
-            field_class="Recommended",
-            schema_name="NetworkSession",
-            logical_type="IP Address",
-        ),
-        AsimCatalogField(
-            name="DstIpAddr",
-            kql_type="string",
-            field_class="Recommended",
-            schema_name="NetworkSession",
-            logical_type="IP Address",
-        ),
-        AsimCatalogField(
-            name="DstPortNumber",
-            kql_type="int",
-            field_class="Recommended",
-            schema_name="NetworkSession",
-            logical_type="Port Number",
-        ),
-    ]
-    return AsimCatalog(
-        manifest=AsimCatalogManifest(
-            source_repository="https://github.com/Azure/Azure-Sentinel",
-            source_path="ASIM/dev/ASimTester/ASimTester.csv",
-            requested_revision=case.catalogue_revision,
-            resolved_revision=case.catalogue_revision,
-            content_sha256="0" * 64,
-            schema_count=1,
-            field_count=len(fields),
-            schemas=["NetworkSession"],
-        ),
-        fields=fields,
-    )
+    return build_catalog()
 
 
 def test_request_contains_no_expected_labels() -> None:
