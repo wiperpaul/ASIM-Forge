@@ -361,6 +361,7 @@ def test_comparison_reports_all_registered_approaches() -> None:
         "field-frequency-prior",
         "direct-lexical",
         "semantic-frame",
+        "matcher-ensemble",
         "case-retrieval",
     }
     assert direct.schema_top1_accuracy == 1

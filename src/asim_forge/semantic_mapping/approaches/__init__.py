@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from ..contracts import SemanticMappingApproach
 from .case_retrieval import CaseRetrievalApproach
 from .direct_lexical import DirectLexicalApproach
+from .matcher_ensemble import MatcherEnsembleApproach
 from .priors import (
     FieldFrequencyPriorApproach,
     MajoritySchemaPriorApproach,
@@ -45,6 +46,10 @@ def _build_semantic_frame(_: Sequence[SemanticMappingCase]) -> SemanticMappingAp
     return SemanticFrameApproach()
 
 
+def _build_matcher_ensemble(_: Sequence[SemanticMappingCase]) -> SemanticMappingApproach:
+    return MatcherEnsembleApproach()
+
+
 def _build_case_retrieval(
     reference_cases: Sequence[SemanticMappingCase],
 ) -> SemanticMappingApproach:
@@ -58,6 +63,7 @@ _APPROACH_FACTORIES: dict[str, ApproachFactory] = {
     FieldFrequencyPriorApproach.identity.name: _build_field_frequency_prior,
     DirectLexicalApproach.identity.name: _build_direct_lexical,
     SemanticFrameApproach.identity.name: _build_semantic_frame,
+    MatcherEnsembleApproach.identity.name: _build_matcher_ensemble,
     CaseRetrievalApproach.identity.name: _build_case_retrieval,
 }
 
@@ -92,6 +98,7 @@ __all__ = [
     "DirectLexicalApproach",
     "FieldFrequencyPriorApproach",
     "MajoritySchemaPriorApproach",
+    "MatcherEnsembleApproach",
     "NullPriorApproach",
     "SemanticFrameApproach",
     "build_approach",

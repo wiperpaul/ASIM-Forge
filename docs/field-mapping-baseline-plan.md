@@ -174,6 +174,33 @@ Taken with the V1 result above, the frozen baseline reads the local token window
 and the slot label, and `direct-lexical` over-predicts on an unmapped slot of a
 familiar type. Those are the specific weaknesses N2 and N3 have to beat.
 
+**N2 and N3.** [profiling.py](../src/asim_forge/semantic_mapping/profiling.py)
+derives a deterministic value profile per slot; the `matcher-ensemble` approach
+combines lexical overlap, character n-grams, catalogue type compatibility, value
+enumeration, and value-shape affinity, each retained separately so the ensemble can
+be ablated signal by signal. Weights are declared constants, not fitted values,
+because no train partition exists.
+
+The signal that mattered was not any of the string matchers. It was **type
+affinity**: reading the profiled value shape against the target field's own naming.
+Catalogue types are too coarse to separate `SrcIpAddr` from a bare `Src` when both
+are strings, so with a meaningless slot label the lexical approaches fall back to
+the generic field. Value shape resolves it.
+
+| `opaque-labels` | field micro F1 | Stability |
+| --- | --- | --- |
+| `direct-lexical` | 0.857 to 0.286 | 0.000 |
+| `semantic-frame` | 1.000 to 0.667 | 0.000 |
+| `matcher-ensemble` | 0.857 to 0.857 | 1.000 |
+
+**`decoy-slot` remains unsolved, and is believed unsolvable at V3.** A slot labelled
+`correlation id` carrying plausible integers maps to `DvcId` under every approach.
+Nothing inside the event distinguishes this source's correlation identifier from
+the device identifier; the distinguishing evidence is source documentation or
+repository code. It is recorded as an identifiability boundary rather than an
+algorithmic defect, and it is the first concrete candidate for the V5 repository
+agent and the V6 owner question.
+
 ### PR 5 — bounded ASIM parser silver
 
 The B1 release described in [the corpus plan](non-llm-baseline-corpus.md#baseline-release-b1-automated-asim-silver),

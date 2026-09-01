@@ -152,7 +152,11 @@ def test_perturb_cases_skips_cases_a_family_cannot_alter() -> None:
 def test_robustness_defaults_to_approaches_that_read_the_event() -> None:
     assert "null-prior" not in ROBUSTNESS_APPROACH_NAMES
     assert "case-retrieval" not in ROBUSTNESS_APPROACH_NAMES
-    assert set(ROBUSTNESS_APPROACH_NAMES) == {"direct-lexical", "semantic-frame"}
+    assert set(ROBUSTNESS_APPROACH_NAMES) == {
+        "direct-lexical",
+        "semantic-frame",
+        "matcher-ensemble",
+    }
 
 
 @pytest.mark.parametrize("name", ["null-prior", "case-retrieval"])
@@ -169,16 +173,21 @@ def test_robustness_reports_one_row_per_approach_and_perturbation() -> None:
     assert report.seed_case_count == 1
 
 
-def test_opaque_labels_expose_how_much_signal_slot_labels_carry() -> None:
-    """Both approaches lose accuracy when only the labels are made meaningless."""
+def test_opaque_labels_separate_label_readers_from_value_readers() -> None:
+    """The label-dependent approaches lose accuracy; the value-profiling one does not."""
     report = run_robustness([_seed()], build_catalog())
 
-    rows = {(row.approach, row.perturbation): row for row in report.rows if row.perturbation}
-    for approach in ROBUSTNESS_APPROACH_NAMES:
+    rows = {(row.approach, row.perturbation): row for row in report.rows}
+    for approach in ("direct-lexical", "semantic-frame"):
         row = rows[(approach, "opaque-labels")]
         assert row.field_micro_f1_delta < 0
         assert not row.passed
         assert any("matching form" in note for note in row.notes)
+
+    ensemble = rows[("matcher-ensemble", "opaque-labels")]
+    assert ensemble.field_micro_f1_delta == 0
+    assert ensemble.prediction_stability == 1.0
+    assert ensemble.passed
 
 
 def test_surface_only_changes_do_not_move_the_answer() -> None:
