@@ -36,21 +36,23 @@ DeepParse mask synthesis + Drain clustering
       |
       v
 typed clusters + representative events + parameter slots
-      |
-      v
-independent cluster-coherence review in Potato
+      +----------------------------+
+      |                            |
+      v                            v
+independent cluster review    source-concept schema ranking
+      |                       (rank, evidence, confidence,
+      |                        selection or abstention)
       |
       +-- rejected / split / insufficient evidence --> no parser
-      |
       +-- approved but not mapped ------------------> awaiting_mapping
-      |
-      +-- approved with a complete mapping ---------> parser spec + KQL candidate
+      +-- approved with complete mapping ----------> parser spec + KQL candidate
 ```
 
 The cluster reviewer decides only whether examples form a coherent event pattern.
 Vendor and product metadata, ASIM schema selection, and field mapping belong to a
 separate engineering decision. The compiler enforces that boundary: Stage 1 approval
-alone never produces KQL.
+alone never produces KQL. Build orchestration prepares schema rankings separately;
+the Potato cluster-review bundle contains no schema suggestion.
 
 ### Semantic-mapping evaluation
 
@@ -83,6 +85,7 @@ future API-backed approaches comparable without changing the fixtures or metrics
 | Ingest `.log` and `.txt` files | Implemented |
 | Deterministic mask-first clustering | Implemented |
 | Target-neutral source-concept normalization | Implemented |
+| Independent schema-ranking contracts and abstention | Implemented |
 | Portable Potato cluster-review task | Implemented |
 | Typed review and parser-spec contracts | Implemented |
 | Deterministic parser-spec and KQL generation | Implemented |
@@ -247,11 +250,15 @@ all three:
 | `semantic-frame` | Two-stage benchmark that names source semantics before projecting them into ASIM. |
 | `case-retrieval` | Transfers schemas, source roles, and mappings from similar labelled cases while excluding the current case ID. |
 
-All three approaches share the same versioned, target-neutral source tokenizer. It
-splits CamelCase and snake_case identifiers, expands a small audited set of common
-log abbreviations, normalizes security-action word forms, and retains the nearest
-CEF/JSON-style key when interpreting a parameter slot. This preprocessing does not
-read expected labels or embed ASIM field names.
+Schema ranking is now an independent phase with its own request, prediction,
+evidence, confidence, and abstention contracts. Its initial `source-concept`
+approach estimates only the likely schema; it does not guess fields. The semantic
+mapping approaches compose that phase with later field-specific behavior.
+
+All phases share the versioned, target-neutral tokenizer in `source_semantics/`.
+Field mapping separately retains the nearest CEF/JSON-style key for a parameter
+slot in `semantic_mapping/source_context.py`. Neither layer reads expected labels.
+See the [schema-ranking boundary](docs/schema-ranking.md).
 
 For comparison evidence, provide an external grouped split. Retrieval then receives
 only the declared training/reference cases while every approach is scored on the
@@ -311,7 +318,9 @@ metric boundaries, local reproduction, and baseline-delta rules.
 `asim-forge build` writes:
 
 - `clusters.jsonl` — stable cluster IDs, templates, representative events, parameter
-  slots, and transparent source-concept schema suggestions.
+  slots, and a compatibility copy of the schema suggestion.
+- `schema-rankings.jsonl` — independent schema-ranking predictions with approach
+  identity, evidence, confidence, candidates, and explicit abstention.
 - `manifest.json` — inputs, event and cluster counts, masks, DeepParse revision, and
   output provenance.
 - `potato/items.jsonl` and `potato/config.yaml` — a portable Stage 1 review task.
@@ -344,15 +353,17 @@ sanitized evaluation cases should be committed.
 
 ## Design boundaries
 
-- **Cluster judgement is independent.** ASIM suggestions must not anchor the initial
-  coherence decision.
+- **Cluster judgement is independent.** DeepParse produces schema-free parsed
+  clusters, and the Potato task contains no schema suggestion that could anchor the
+  initial coherence decision.
 - **Suggestions are not approvals.** Generated rankings, confidence, evidence, and
   warnings remain distinct from human decisions.
 - **Provenance is part of the output.** DeepParse, catalogue, approach, case, and
   decision revisions are recorded at their respective boundaries.
 - **Source normalization is target neutral.** Original events remain unchanged in
-  evidence while deterministic concepts and structured key context are shared by
-  every mapping approach.
+  evidence while deterministic concepts are shared across ranking and mapping.
+- **Schema ranking is not field mapping.** Schema candidates and abstention are
+  evaluated before source roles or target fields are considered.
 - **Compilation is deterministic.** The same complete cluster and review contracts
   produce the same parser specification and KQL candidate.
 - **Deployment is out of scope.** LogLathe neither connects to a Sentinel workspace
@@ -364,10 +375,10 @@ to commit `b53c29b379be5ab834ff990154297ef8fea8d98a`. LogLathe confines that
 dependency to the clustering boundary and uses its deterministic offline mask
 bundle; the current build workflow does not download or invoke an LLM.
 
-After clustering, the current deterministic suggestion boundary strips decoded
-byte-order marks, splits compound identifiers, normalizes a bounded source
-vocabulary, and abstains when schemas have equal evidence. It does not replace a
-future format-aware CEF, JSON, or multiline adapter.
+After clustering, build orchestration invokes the independent `source-concept`
+schema ranker. It uses normalized source concepts and abstains when schemas have
+equal evidence. Structured key-to-slot context remains on the later mapping side;
+neither boundary replaces a future format-aware CEF, JSON, or multiline adapter.
 
 ## What comes next
 

@@ -13,8 +13,7 @@ from deepparse.drain.masks_application import MaskApplier
 from deepparse.masks_types import Mask
 from deepparse.tokenize import tokenize
 
-from .models import ClusterRecord, MaskDefinition, ParameterSlot, SourceEvent
-from .suggestions import suggest_schema
+from .models import MaskDefinition, ParameterSlot, ParsedCluster, SourceEvent
 
 DEEPPARSE_REVISION = "b53c29b379be5ab834ff990154297ef8fea8d98a"
 _PLACEHOLDER = re.compile(r"<VAR:([A-Za-z0-9_]+)>")
@@ -22,7 +21,7 @@ _PLACEHOLDER = re.compile(r"<VAR:([A-Za-z0-9_]+)>")
 
 @dataclass(frozen=True)
 class ClusterResult:
-    clusters: list[ClusterRecord]
+    clusters: list[ParsedCluster]
     masks: list[MaskDefinition]
     assignments: list[int]
 
@@ -86,17 +85,16 @@ class DeepParseClusterer:
         engine_cluster_id: int,
         template: str,
         members: list[SourceEvent],
-    ) -> ClusterRecord:
+    ) -> ParsedCluster:
         identity = f"{self.system}\0{template}".encode()
         stable_id = hashlib.sha256(identity).hexdigest()[:16]
-        return ClusterRecord(
+        return ParsedCluster(
             cluster_id=f"cluster-{stable_id}",
             engine_cluster_id=engine_cluster_id,
             template=template,
             event_count=len(members),
             representative_events=_representative_events(members, self.samples_per_cluster),
             parameter_slots=_parameter_slots(template, members),
-            schema_suggestion=suggest_schema(template),
         )
 
 

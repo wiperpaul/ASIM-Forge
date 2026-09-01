@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from .models import InputFile, SourceEvent
-from .source_normalization import strip_leading_bom
+from .source_semantics import strip_leading_bom
 
 SUPPORTED_SUFFIXES = frozenset({".log", ".txt"})
 

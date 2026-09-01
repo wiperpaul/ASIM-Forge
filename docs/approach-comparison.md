@@ -31,14 +31,18 @@ identity, rankings, scores, evidence, and warnings live in
 | `semantic-frame` | `semantic_mapping/approaches/semantic_frame/` | A two-stage benchmark that first names source roles and static meanings, then projects them into the catalogue. Its small lexical normalizers are evaluation baselines, not production vendor rules. |
 | `case-retrieval` | `semantic_mapping/approaches/case_retrieval/` | Retrieves similar labelled cases and transfers their schema, source roles, and target mappings. It excludes the current case by stable case ID, preventing direct target-label leakage. |
 
-Each approach owns a package under `semantic_mapping/approaches/`. Version 2 of the
-three initial approaches shares target-neutral identifier and source-vocabulary
-normalization from `source_normalization.py`; catalogue-ranking primitives remain
-in the private `approaches/_lexical.py` module. Neither layer owns provider state,
-expected labels, or feedback. Adding an API, local model, MCP-backed service,
-retrieval method, or uncertainty-only oracle means implementing
-`SemanticMappingApproach` in a new package and adding its factory to the approach
-registry. Existing cases and metrics remain unchanged.
+Each approach owns a package under `semantic_mapping/approaches/`. Target-neutral
+normalization lives in `source_semantics/`, schema estimation lives in
+`schema_ranking/`, target-field ranking lives in `semantic_mapping/field_ranking.py`,
+and structured key-to-slot context lives in `semantic_mapping/source_context.py`.
+The former private `approaches/_lexical.py` module remains only as a compatibility
+import. None of these layers owns expected labels or feedback.
+
+The direct-lexical and semantic-frame identities are version 3 because they now
+respect explicit schema-ranking abstention before attempting fields. Case retrieval
+remains version 2 because its labelled-case schema vote is a separate mechanism.
+Adding another provider still means implementing `SemanticMappingApproach` and
+registering its factory; existing cases and metrics remain unchanged.
 
 ## Metrics
 

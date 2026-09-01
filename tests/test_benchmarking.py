@@ -282,6 +282,7 @@ def test_local_schema_hint_corpus_reports_weak_agreement_separately(tmp_path: Pa
 
     result = report.results[0]
     assert result.track == "schema-hint"
+    assert result.approach == "source-concept-v1"
     assert result.primary_metric == "schema_hint_event_agreement"
     assert result.metrics["schema_hint_event_agreement"] == 1.0
     assert report.corpora[0].schema_hint == "Authentication"

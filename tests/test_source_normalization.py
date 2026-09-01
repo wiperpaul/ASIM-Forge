@@ -1,8 +1,11 @@
+from asim_forge.semantic_mapping.source_context import structured_key_before
 from asim_forge.source_normalization import (
-    contains_source_phrase,
-    source_tokens,
-    structured_key_before,
+    source_tokens as compatibility_source_tokens,
 )
+from asim_forge.source_normalization import (
+    structured_key_before as compatibility_structured_key_before,
+)
+from asim_forge.source_semantics import contains_source_phrase, source_tokens
 
 
 def test_source_tokens_split_identifiers_and_normalize_security_actions() -> None:
@@ -39,3 +42,9 @@ def test_structured_key_before_preserves_cef_and_json_field_context() -> None:
     assert structured_key_before(cef, cef.index("<VAR:IPV4>")) == "src"
     assert structured_key_before(cef, cef.rindex("<VAR:IPV4>")) == "dst"
     assert structured_key_before(json, json.index("<VAR:IPV4>")) == "sourceAddress"
+
+
+def test_original_source_normalization_import_remains_compatible() -> None:
+    assert compatibility_source_tokens("userAuthenticate") == source_tokens("userAuthenticate")
+    template = "src=<VAR:IPV4>"
+    assert compatibility_structured_key_before(template, template.index("<VAR:IPV4>")) == "src"

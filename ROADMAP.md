@@ -73,10 +73,13 @@ provenance must remain inspectable through review and release reports.
 The first target-neutral preprocessing slice is now implemented: decoded byte-order
 marks are removed at ingestion, compound identifiers and a bounded source
 vocabulary are normalized consistently, and the key owning a CEF/JSON-style value
-is retained as local slot context. The direct-lexical, semantic-frame, and
-case-retrieval baselines share that versioned behavior. This improves deterministic
-evidence extraction but is not a substitute for the explicit structure adapters
-above.
+is retained as local slot context on the mapping side. Schema ranking now has its
+own request, prediction, evidence, confidence, and abstention contracts; DeepParse
+returns schema-free parsed clusters and build orchestration records rankings as a
+separate artifact. The mapping baselines share the same normalized source concepts
+without collapsing schema and field evaluation into one phase. This improves
+deterministic evidence extraction but is not a substitute for the explicit
+structure adapters above.
 
 ## Milestone 1 — Cluster-review walking skeleton (current)
 

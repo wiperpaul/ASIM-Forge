@@ -19,6 +19,11 @@ schemas; it does not say that the suggestion is correct. The baseline uses the s
 target-neutral tokenization primitives as the semantic approaches and returns
 `NoFit` when the leading schemas have equal evidence.
 
+Schema-hint and format-diagnostic rows identify that phase as `source-concept-v1`;
+parsing-gold rows remain `deepparse-default`. Earlier reports that attributed both
+operations to `deepparse-default` intentionally start a new schema-ranking baseline
+series rather than presenting unlike approach identities as a numeric delta.
+
 The schema-hint track is deliberately weaker than semantic gold. Microsoft ASIM
 sample filenames and placement identify the parser schema they were collected for,
 but the paired `IngestedLogs` files are source-table ingestion exports rather than

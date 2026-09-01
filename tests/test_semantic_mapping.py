@@ -343,7 +343,9 @@ def test_all_approaches_share_structured_identifier_normalization() -> None:
     assert {field.asim_field for field in direct.asim_fields} == expected_fields
     assert {field.asim_field for field in frame.asim_fields} >= expected_fields
     assert {field.asim_field for field in retrieval.asim_fields} >= expected_fields
-    assert {direct.approach.version, frame.approach.version, retrieval.approach.version} == {"2"}
+    assert direct.approach.version == "3"
+    assert frame.approach.version == "3"
+    assert retrieval.approach.version == "2"
 
 
 def test_retrieval_transfers_a_labelled_case_without_reading_target_gold() -> None:

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from ....source_semantics import source_tokens
 from ...contracts import RankedFieldCandidate
-from .._lexical import tokens
 
 
 def similarity(left: str, right: str) -> float:
-    left_terms = tokens(left)
-    right_terms = tokens(right)
+    left_terms = source_tokens(left)
+    right_terms = source_tokens(right)
     if not left_terms or not right_terms:
         return 0.0
     return len(left_terms & right_terms) / len(left_terms | right_terms)

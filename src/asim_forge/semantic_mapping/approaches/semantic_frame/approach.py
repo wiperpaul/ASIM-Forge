@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ....models import AsimCatalog, ParameterSlot
-from ....source_normalization import contains_source_phrase
+from ....source_semantics import contains_source_phrase, source_tokens
 from ...contracts import (
     ApproachIdentity,
     MappingRequest,
@@ -11,8 +11,10 @@ from ...contracts import (
     PredictedSourceSemantic,
     SemanticMappingPrediction,
 )
+from ...field_ranking import rank_fields
+from ...schema_candidates import rank_schemas
+from ...source_context import slot_context
 from ...types import SemanticMappingInput
-from .._lexical import rank_fields, rank_schemas, slot_context, tokens
 
 _STATIC_SEMANTICS = (
     ("connection allowed", "network.connection.allowed", "event result", "Success"),
@@ -25,7 +27,7 @@ _STATIC_SEMANTICS = (
 class SemanticFrameApproach:
     """Infer source roles first, then project those roles into ASIM."""
 
-    identity = ApproachIdentity(name="semantic-frame", version="2")
+    identity = ApproachIdentity(name="semantic-frame", version="3")
 
     def predict(
         self,
@@ -117,8 +119,8 @@ def _infer_slot_role(
     slot: ParameterSlot,
     context: str,
 ) -> str | None:
-    terms = tokens(context)
-    label_terms = tokens(slot.label)
+    terms = source_tokens(context)
+    label_terms = source_tokens(slot.label)
     is_address = "ip" in label_terms or "address" in label_terms
     if "port" in terms:
         if "source" in terms:
@@ -131,7 +133,7 @@ def _infer_slot_role(
     if is_address and "destination" in terms:
         return "network.destination.address"
     if "user" in terms:
-        if tokens(mapping_input.template) & {"login", "logon", "authentication"}:
+        if source_tokens(mapping_input.template) & {"login", "logon", "authentication"}:
             return "authentication.target.user"
         return "event.actor.user"
     return None

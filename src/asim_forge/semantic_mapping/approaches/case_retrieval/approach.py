@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from ....models import AsimCatalog, ParameterSlot
-from ....source_normalization import contains_source_phrase
+from ....source_semantics import contains_source_phrase
 from ...contracts import (
     ApproachIdentity,
     MappingRequest,
@@ -16,7 +16,7 @@ from ...contracts import (
     RankedSchemaCandidate,
     SemanticMappingPrediction,
 )
-from .._lexical import slot_context
+from ...source_context import slot_context
 from .matching import similarity, weighted_candidates
 
 if TYPE_CHECKING:
