@@ -85,6 +85,26 @@ currently is. It lands with the v2 contracts in PR 3.
    decide and should be stated rather than discovered later.
 4. Replace bare `coverage` with a selective risk–coverage curve and its AUC.
 
+Implemented in [statistics.py](../src/asim_forge/semantic_mapping/statistics.py).
+Two decisions are worth recording because they constrain later work.
+
+**The exchangeable unit is the source family, not the case.** Templates from one
+product are not independent observations, so the bootstrap resamples whole groups
+and the permutation test swaps whole groups. The pre-label split group is used when
+a split is supplied; source metadata is a fallback, and the report names which was
+used. Case-level resampling would report differences a new source family would not
+reproduce.
+
+**Approaches are tested against one baseline, not all pairs.** All-pairs testing
+across six registered approaches multiplies the false-positive rate on a sample far
+too small to absorb it. The default baseline is the first registered prior.
+
+The risk–coverage curve orders cases by the approach's own scores. Those scores are
+normalized lexical overlap, so the curve measures ranking quality only and must not
+be read as calibration. Brier score and reliability diagrams stay out of scope until
+a provider emits probabilities, as
+[the corpus plan](non-llm-baseline-corpus.md#metrics-and-reports) requires.
+
 ### PR 3 — version 2 contracts
 
 1. Freeze the source-frame facet registry (`domain` / `relation` / `entity` /

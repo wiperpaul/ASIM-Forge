@@ -21,10 +21,12 @@ from ..semantic_annotation import (
 )
 from ..semantic_mapping import APPROACH_NAMES
 from ..semantic_mapping.comparison import (
+    ComparisonReport,
     compare_approaches,
     compare_split_approaches,
     write_comparison_report,
 )
+from ..semantic_mapping.statistics import DEFAULT_RESAMPLES
 
 
 def register_evaluation_parser(
@@ -166,6 +168,20 @@ def register_evaluation_parser(
         help="Diagnostic condition supplying the gold schema to isolate field-ranking error",
     )
     evaluation_compare.add_argument(
+        "--resamples",
+        type=int,
+        default=DEFAULT_RESAMPLES,
+        help=(
+            "Bootstrap and permutation resamples over source families "
+            f"(default: {DEFAULT_RESAMPLES})"
+        ),
+    )
+    evaluation_compare.add_argument(
+        "--baseline-approach",
+        choices=APPROACH_NAMES,
+        help="Approach every other approach is tested against (default: the first prior)",
+    )
+    evaluation_compare.add_argument(
         "--case-groups",
         type=Path,
         help="Pre-label case-groups.jsonl from semantic promotion",
@@ -265,7 +281,14 @@ def run_evaluation_command(args: argparse.Namespace) -> None:
         ):
             raise EvaluationError("--case-groups and --promotion-manifest require --split")
         if args.split is None:
-            report = compare_approaches(cases, catalog, args.approaches, oracle=args.oracle)
+            report = compare_approaches(
+                cases,
+                catalog,
+                args.approaches,
+                oracle=args.oracle,
+                resamples=args.resamples,
+                baseline_approach=args.baseline_approach,
+            )
         else:
             split = load_semantic_dataset_split(args.split)
             _validate_promoted_split(
@@ -282,6 +305,8 @@ def run_evaluation_command(args: argparse.Namespace) -> None:
                 args.partition,
                 args.approaches,
                 oracle=args.oracle,
+                resamples=args.resamples,
+                baseline_approach=args.baseline_approach,
             )
         if args.output is not None:
             write_comparison_report(args.output, report)
@@ -292,12 +317,23 @@ def run_evaluation_command(args: argparse.Namespace) -> None:
             )
         if report.oracle != "none":
             print(f"oracle={report.oracle} (diagnostic condition, not approach accuracy)")
+        if report.sample is not None:
+            print(
+                f"cases={report.sample.case_count} "
+                f"{report.sample.grouping}-groups={report.sample.group_count} "
+                f"resolvable-difference>={report.sample.minimum_detectable_effect:.3f}"
+            )
         print(
             "approach              schema@1  schema@3  field-f1  field-mrr  "
-            "cand@1  cand@5  cut  tie  role-f1  exact  coverage  edits"
+            "cand@1  cand@5  cut  tie  role-f1  exact  coverage  sel-auc  edits"
         )
         for evaluation in report.approaches:
             metrics = evaluation.metrics
+            selective = (
+                evaluation.risk_coverage.area_under_curve
+                if evaluation.risk_coverage is not None
+                else 0.0
+            )
             print(
                 f"{evaluation.approach.name:<21} "
                 f"{metrics.schema_top1_accuracy:>8.3f}  "
@@ -311,10 +347,13 @@ def run_evaluation_command(args: argparse.Namespace) -> None:
                 f"{metrics.source_micro_f1:>7.3f}  "
                 f"{metrics.mapping_exact_match:>5.3f}  "
                 f"{metrics.coverage:>8.3f}  "
+                f"{selective:>7.3f}  "
                 f"{metrics.mean_mapping_edits:>5.2f}"
             )
             for warning in evaluation.warnings:
                 print(f"  warning: {warning}")
+        _print_intervals(report)
+        _print_paired_tests(report)
         for warning in report.warnings:
             print(f"warning: {warning}")
     else:
@@ -329,6 +368,41 @@ def run_evaluation_command(args: argparse.Namespace) -> None:
         print(
             f"Evaluated {len(report.corpora)} corpora and wrote "
             f"{len(report.results)} result row(s) to {args.output}"
+        )
+
+
+def _print_intervals(report: ComparisonReport) -> None:
+    intervals = [
+        (evaluation.approach.name, interval)
+        for evaluation in report.approaches
+        for interval in evaluation.intervals
+    ]
+    if not intervals:
+        return
+    level = intervals[0][1].confidence_level
+    resamples = intervals[0][1].resamples
+    print(f"\nsource-family bootstrap, {resamples} resamples, {level:.0%} percentile interval")
+    print("approach              metric                     point           interval")
+    for name, interval in intervals:
+        print(
+            f"{name:<21} {interval.metric:<24} {interval.point:>7.3f}   "
+            f"[{interval.lower:>6.3f}, {interval.upper:>6.3f}]"
+        )
+
+
+def _print_paired_tests(report: ComparisonReport) -> None:
+    if not report.paired_tests:
+        return
+    baseline = report.paired_tests[0].baseline
+    metric = report.paired_tests[0].metric
+    print(f"\npaired permutation test against {baseline} on {metric}")
+    print("approach                  value      diff        p  resolvable  verdict")
+    for test in report.paired_tests:
+        verdict = "distinguishable" if test.significant else "not distinguishable"
+        print(
+            f"{test.candidate:<21} {test.candidate_value:>8.3f}  "
+            f"{test.difference:>+8.3f}  {test.p_value:>7.3f}  "
+            f"{test.minimum_detectable_effect:>10.3f}  {verdict}"
         )
 
 

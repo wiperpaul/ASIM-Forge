@@ -22,6 +22,17 @@ from .contracts import (
     SemanticMappingPrediction,
 )
 from .metrics import EvaluationError, EvaluationMetrics, evaluate_predictions
+from .statistics import (
+    DEFAULT_RESAMPLES,
+    BootstrapInterval,
+    PairedApproachTest,
+    RiskCoverageCurve,
+    SampleAdequacy,
+    bootstrap_intervals,
+    describe_sample,
+    paired_permutation_test,
+    risk_coverage_curve,
+)
 
 OracleCondition = Literal["none", "schema"]
 
@@ -33,6 +44,8 @@ class ComparisonError(EvaluationError):
 class ApproachEvaluation(StrictModel):
     approach: ApproachIdentity
     metrics: EvaluationMetrics
+    intervals: list[BootstrapInterval] = Field(default_factory=list)
+    risk_coverage: RiskCoverageCurve | None = None
     predictions: list[SemanticMappingPrediction] = Field(min_length=1)
     warnings: list[str] = Field(default_factory=list)
 
@@ -45,7 +58,9 @@ class ComparisonReport(StrictModel):
     split_id: str | None = None
     evaluation_partition: EvaluationPartition | None = None
     oracle: OracleCondition = "none"
+    sample: SampleAdequacy | None = None
     approaches: list[ApproachEvaluation] = Field(min_length=1)
+    paired_tests: list[PairedApproachTest] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -58,6 +73,9 @@ def compare_approaches(
     split_id: str | None = None,
     evaluation_partition: EvaluationPartition | None = None,
     oracle: OracleCondition = "none",
+    split: SemanticDatasetSplit | None = None,
+    resamples: int = DEFAULT_RESAMPLES,
+    baseline_approach: str | None = None,
 ) -> ComparisonReport:
     """Evaluate registered approaches against the same cases and catalogue."""
     if not cases:
@@ -103,6 +121,8 @@ def compare_approaches(
             ApproachEvaluation(
                 approach=predictions[0].approach,
                 metrics=evaluate_predictions(cases, predictions),
+                intervals=bootstrap_intervals(cases, predictions, split=split, resamples=resamples),
+                risk_coverage=risk_coverage_curve(cases, predictions),
                 predictions=predictions,
                 warnings=_evaluation_warnings(
                     cases,
@@ -113,6 +133,14 @@ def compare_approaches(
             )
         )
 
+    sample = describe_sample(cases, split)
+    paired_tests = _paired_tests(
+        cases,
+        evaluations,
+        split=split,
+        resamples=resamples,
+        baseline_approach=baseline_approach,
+    )
     return ComparisonReport(
         catalogue_revision=catalog.manifest.resolved_revision,
         case_count=len(cases),
@@ -120,8 +148,10 @@ def compare_approaches(
         split_id=split_id,
         evaluation_partition=evaluation_partition,
         oracle=oracle,
+        sample=sample,
         approaches=evaluations,
-        warnings=_floor_warnings(evaluations),
+        paired_tests=paired_tests,
+        warnings=[*_floor_warnings(evaluations), *_resolution_warnings(sample, paired_tests)],
     )
 
 
@@ -133,6 +163,8 @@ def compare_split_approaches(
     approach_names: list[str] | None = None,
     *,
     oracle: OracleCondition = "none",
+    resamples: int = DEFAULT_RESAMPLES,
+    baseline_approach: str | None = None,
 ) -> ComparisonReport:
     selection = select_semantic_split(cases, split, evaluation_partition)
     return compare_approaches(
@@ -143,6 +175,9 @@ def compare_split_approaches(
         split_id=selection.split_id,
         evaluation_partition=selection.evaluation_partition,
         oracle=oracle,
+        split=split,
+        resamples=resamples,
+        baseline_approach=baseline_approach,
     )
 
 
@@ -180,6 +215,70 @@ def _evaluation_warnings(
         warnings.append("No explicit grouped split: retrieval results are not comparison evidence.")
     if not any(prediction.disposition == "mapped" for prediction in predictions):
         warnings.append("Approach produced no mapped predictions for this case set.")
+    return warnings
+
+
+def _paired_tests(
+    cases: list[SemanticMappingCase],
+    evaluations: list[ApproachEvaluation],
+    *,
+    split: SemanticDatasetSplit | None,
+    resamples: int,
+    baseline_approach: str | None,
+) -> list[PairedApproachTest]:
+    """Test every approach against one baseline rather than against each other.
+
+    All-pairs testing over a handful of approaches multiplies the false-positive
+    rate on a sample already too small to support it.
+    """
+    if len(evaluations) < 2:
+        return []
+    by_name = {evaluation.approach.name: evaluation for evaluation in evaluations}
+    baseline_name = baseline_approach or _default_baseline(evaluations)
+    if baseline_name not in by_name:
+        raise ComparisonError(
+            f"Baseline approach {baseline_name!r} is not among the compared approaches"
+        )
+    baseline = by_name[baseline_name]
+    return [
+        paired_permutation_test(
+            cases,
+            baseline.predictions,
+            evaluation.predictions,
+            split=split,
+            resamples=resamples,
+        )
+        for evaluation in evaluations
+        if evaluation.approach.name != baseline_name
+    ]
+
+
+def _default_baseline(evaluations: list[ApproachEvaluation]) -> str:
+    for evaluation in evaluations:
+        if evaluation.approach.name in PRIOR_APPROACH_NAMES:
+            return evaluation.approach.name
+    return evaluations[0].approach.name
+
+
+def _resolution_warnings(
+    sample: SampleAdequacy,
+    paired_tests: list[PairedApproachTest],
+) -> list[str]:
+    """State what the sample cannot decide before any difference is read as real."""
+    warnings = [
+        f"{sample.group_count} {sample.grouping} group(s): differences below "
+        f"{sample.minimum_detectable_effect:.3f} are not resolvable by this sample."
+    ]
+    if sample.group_count < 2:
+        warnings.append(
+            "One group only: intervals and permutation tests cannot separate approach "
+            "quality from source-family effects."
+        )
+    undecided = sorted(
+        test.candidate for test in paired_tests if not test.significant and abs(test.difference) > 0
+    )
+    if undecided:
+        warnings.append(f"Difference not distinguishable from group noise: {', '.join(undecided)}.")
     return warnings
 
 
