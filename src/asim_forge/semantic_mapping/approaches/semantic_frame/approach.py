@@ -11,7 +11,7 @@ from ...contracts import (
     PredictedSourceSemantic,
     SemanticMappingPrediction,
 )
-from ...field_ranking import rank_fields
+from ...field_ranking import rank_field_candidates
 from ...schema_candidates import rank_schemas
 from ...source_context import slot_context
 from ...types import SemanticMappingInput
@@ -34,7 +34,7 @@ class SemanticFrameApproach:
         request: MappingRequest,
         catalog: AsimCatalog,
     ) -> SemanticMappingPrediction:
-        schemas = rank_schemas(request.input, catalog)
+        schemas = rank_schemas(request.input, catalog, schema_hint=request.schema_hint)
         if not schemas:
             return SemanticMappingPrediction(
                 case_id=request.case_id,
@@ -61,15 +61,17 @@ class SemanticFrameApproach:
                     evidence=[f"normalized slot context: {context}"],
                 )
             )
-            candidates = rank_fields(fields, f"{role} {slot.label}")
-            if candidates:
+            candidates = rank_field_candidates(fields, f"{role} {slot.label}")
+            if candidates.candidates:
                 mappings.append(
                     PredictedAsimField(
                         source_kind="slot",
                         locator=slot.slot_id,
-                        asim_field=candidates[0].asim_field,
-                        score=candidates[0].score,
-                        ranked_candidates=candidates,
+                        asim_field=candidates.candidates[0].asim_field,
+                        score=candidates.candidates[0].score,
+                        ranked_candidates=candidates.candidates,
+                        candidate_pool_size=candidates.pool_size,
+                        considered_field_count=candidates.considered_field_count,
                         evidence=[f"source role: {role}"],
                     )
                 )
@@ -86,16 +88,18 @@ class SemanticFrameApproach:
                     evidence=[f"template constant: {phrase}"],
                 )
             )
-            candidates = rank_fields(fields, target_query)
-            if candidates:
+            candidates = rank_field_candidates(fields, target_query)
+            if candidates.candidates:
                 mappings.append(
                     PredictedAsimField(
                         source_kind="template_constant",
                         locator=phrase,
-                        asim_field=candidates[0].asim_field,
+                        asim_field=candidates.candidates[0].asim_field,
                         constant_value=constant_value,
-                        score=candidates[0].score,
-                        ranked_candidates=candidates,
+                        score=candidates.candidates[0].score,
+                        ranked_candidates=candidates.candidates,
+                        candidate_pool_size=candidates.pool_size,
+                        considered_field_count=candidates.considered_field_count,
                         evidence=[f"source role: {role}"],
                     )
                 )

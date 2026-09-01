@@ -9,7 +9,7 @@ from ...contracts import (
     PredictedAsimField,
     SemanticMappingPrediction,
 )
-from ...field_ranking import rank_fields
+from ...field_ranking import rank_field_candidates
 from ...schema_candidates import rank_schemas
 from ...source_context import slot_context
 
@@ -24,7 +24,7 @@ class DirectLexicalApproach:
         request: MappingRequest,
         catalog: AsimCatalog,
     ) -> SemanticMappingPrediction:
-        schemas = rank_schemas(request.input, catalog)
+        schemas = rank_schemas(request.input, catalog, schema_hint=request.schema_hint)
         if not schemas:
             return SemanticMappingPrediction(
                 case_id=request.case_id,
@@ -39,7 +39,8 @@ class DirectLexicalApproach:
         predictions: list[PredictedAsimField] = []
         for slot in request.input.parameter_slots:
             context = slot_context(request.input, slot)
-            candidates = rank_fields(fields, context)
+            ranking = rank_field_candidates(fields, context)
+            candidates = ranking.candidates
             if not candidates:
                 continue
             predictions.append(
@@ -49,6 +50,8 @@ class DirectLexicalApproach:
                     asim_field=candidates[0].asim_field,
                     score=candidates[0].score,
                     ranked_candidates=candidates,
+                    candidate_pool_size=ranking.pool_size,
+                    considered_field_count=ranking.considered_field_count,
                     evidence=[f"local slot context: {context}"],
                 )
             )

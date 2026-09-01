@@ -15,13 +15,15 @@ from ..evaluation_splits import (
     select_semantic_split,
 )
 from ..models import AsimCatalog, StrictModel
-from .approaches import APPROACH_NAMES, build_approach
+from .approaches import APPROACH_NAMES, PRIOR_APPROACH_NAMES, build_approach
 from .contracts import (
     ApproachIdentity,
     MappingRequest,
     SemanticMappingPrediction,
 )
 from .metrics import EvaluationError, EvaluationMetrics, evaluate_predictions
+
+OracleCondition = Literal["none", "schema"]
 
 
 class ComparisonError(EvaluationError):
@@ -42,7 +44,9 @@ class ComparisonReport(StrictModel):
     reference_case_count: int = Field(default=0, ge=0)
     split_id: str | None = None
     evaluation_partition: EvaluationPartition | None = None
+    oracle: OracleCondition = "none"
     approaches: list[ApproachEvaluation] = Field(min_length=1)
+    warnings: list[str] = Field(default_factory=list)
 
 
 def compare_approaches(
@@ -53,6 +57,7 @@ def compare_approaches(
     reference_cases: list[SemanticMappingCase] | None = None,
     split_id: str | None = None,
     evaluation_partition: EvaluationPartition | None = None,
+    oracle: OracleCondition = "none",
 ) -> ComparisonReport:
     """Evaluate registered approaches against the same cases and catalogue."""
     if not cases:
@@ -89,6 +94,7 @@ def compare_approaches(
                         case_id=case.case_id,
                         catalogue_revision=case.catalogue_revision,
                         input=case.input,
+                        schema_hint=case.expected.schema_name if oracle == "schema" else None,
                     ),
                     catalog,
                 )
@@ -102,6 +108,7 @@ def compare_approaches(
                     cases,
                     predictions,
                     has_grouped_split=reference_cases is not None,
+                    oracle=oracle,
                 ),
             )
         )
@@ -112,7 +119,9 @@ def compare_approaches(
         reference_case_count=len(references),
         split_id=split_id,
         evaluation_partition=evaluation_partition,
+        oracle=oracle,
         approaches=evaluations,
+        warnings=_floor_warnings(evaluations),
     )
 
 
@@ -122,6 +131,8 @@ def compare_split_approaches(
     split: SemanticDatasetSplit,
     evaluation_partition: EvaluationPartition = "test",
     approach_names: list[str] | None = None,
+    *,
+    oracle: OracleCondition = "none",
 ) -> ComparisonReport:
     selection = select_semantic_split(cases, split, evaluation_partition)
     return compare_approaches(
@@ -131,6 +142,7 @@ def compare_split_approaches(
         reference_cases=selection.reference_cases,
         split_id=selection.split_id,
         evaluation_partition=selection.evaluation_partition,
+        oracle=oracle,
     )
 
 
@@ -148,8 +160,13 @@ def _evaluation_warnings(
     predictions: list[SemanticMappingPrediction],
     *,
     has_grouped_split: bool,
+    oracle: OracleCondition = "none",
 ) -> list[str]:
     warnings: list[str] = []
+    if oracle != "none":
+        warnings.append(
+            f"{oracle} oracle condition: an error-decomposition diagnostic, not approach accuracy."
+        )
     if len(cases) < 20:
         warnings.append("Fewer than 20 cases: results are a harness smoke test, not evidence.")
     systems = {case.input.source_metadata.system for case in cases}
@@ -164,3 +181,30 @@ def _evaluation_warnings(
     if not any(prediction.disposition == "mapped" for prediction in predictions):
         warnings.append("Approach produced no mapped predictions for this case set.")
     return warnings
+
+
+def _floor_warnings(evaluations: list[ApproachEvaluation]) -> list[str]:
+    """Name approaches that fail to beat the priors, so no score is read on its own."""
+    priors = [
+        evaluation for evaluation in evaluations if evaluation.approach.name in PRIOR_APPROACH_NAMES
+    ]
+    others = [
+        evaluation
+        for evaluation in evaluations
+        if evaluation.approach.name not in PRIOR_APPROACH_NAMES
+    ]
+    if not priors:
+        return ["No prior was evaluated: reported scores have no floor to be read against."]
+    if not others:
+        return []
+    floor = max(prior.metrics.field_micro_f1 for prior in priors)
+    failed = sorted(
+        evaluation.approach.name
+        for evaluation in others
+        if evaluation.metrics.field_micro_f1 <= floor
+    )
+    if not failed:
+        return []
+    return [
+        f"At or below the prior field micro F1 floor {floor:.3f}: {', '.join(failed)}.",
+    ]

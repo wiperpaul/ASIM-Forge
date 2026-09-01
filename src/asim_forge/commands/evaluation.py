@@ -160,6 +160,12 @@ def register_evaluation_parser(
         help="Held-out partition to evaluate when --split is supplied (default: test)",
     )
     evaluation_compare.add_argument(
+        "--oracle",
+        choices=("none", "schema"),
+        default="none",
+        help="Diagnostic condition supplying the gold schema to isolate field-ranking error",
+    )
+    evaluation_compare.add_argument(
         "--case-groups",
         type=Path,
         help="Pre-label case-groups.jsonl from semantic promotion",
@@ -259,7 +265,7 @@ def run_evaluation_command(args: argparse.Namespace) -> None:
         ):
             raise EvaluationError("--case-groups and --promotion-manifest require --split")
         if args.split is None:
-            report = compare_approaches(cases, catalog, args.approaches)
+            report = compare_approaches(cases, catalog, args.approaches, oracle=args.oracle)
         else:
             split = load_semantic_dataset_split(args.split)
             _validate_promoted_split(
@@ -275,6 +281,7 @@ def run_evaluation_command(args: argparse.Namespace) -> None:
                 split,
                 args.partition,
                 args.approaches,
+                oracle=args.oracle,
             )
         if args.output is not None:
             write_comparison_report(args.output, report)
@@ -283,19 +290,24 @@ def run_evaluation_command(args: argparse.Namespace) -> None:
                 f"split={report.split_id} partition={report.evaluation_partition} "
                 f"references={report.reference_case_count} cases={report.case_count}"
             )
+        if report.oracle != "none":
+            print(f"oracle={report.oracle} (diagnostic condition, not approach accuracy)")
         print(
-            "approach          schema@1  schema@3  field-f1  field-mrr  "
-            "field-r@gt  role-f1  exact  coverage  edits"
+            "approach              schema@1  schema@3  field-f1  field-mrr  "
+            "cand@1  cand@5  cut  tie  role-f1  exact  coverage  edits"
         )
         for evaluation in report.approaches:
             metrics = evaluation.metrics
             print(
-                f"{evaluation.approach.name:<17} "
+                f"{evaluation.approach.name:<21} "
                 f"{metrics.schema_top1_accuracy:>8.3f}  "
                 f"{metrics.schema_top3_hit_rate:>8.3f}  "
                 f"{metrics.field_micro_f1:>8.3f}  "
                 f"{metrics.field_mrr:>9.3f}  "
-                f"{metrics.field_recall_at_gold:>10.3f}  "
+                f"{metrics.candidate_recall_at_1:>6.3f}  "
+                f"{metrics.candidate_recall_at_5:>6.3f}  "
+                f"{metrics.candidate_reduction_ratio:>3.2f}  "
+                f"{metrics.field_top1_tie_rate:>3.2f}  "
                 f"{metrics.source_micro_f1:>7.3f}  "
                 f"{metrics.mapping_exact_match:>5.3f}  "
                 f"{metrics.coverage:>8.3f}  "
@@ -303,6 +315,8 @@ def run_evaluation_command(args: argparse.Namespace) -> None:
             )
             for warning in evaluation.warnings:
                 print(f"  warning: {warning}")
+        for warning in report.warnings:
+            print(f"warning: {warning}")
     else:
         report = run_benchmarks(
             args.registry,

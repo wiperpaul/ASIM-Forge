@@ -12,7 +12,19 @@ from .types import SemanticMappingInput
 def rank_schemas(
     mapping_input: SemanticMappingInput,
     catalog: AsimCatalog,
+    *,
+    schema_hint: str | None = None,
 ) -> list[RankedSchemaCandidate]:
+    if schema_hint is not None:
+        if schema_hint not in catalog.manifest.schemas:
+            raise ValueError(f"Schema oracle hint is absent from the catalogue: {schema_hint}")
+        return [
+            RankedSchemaCandidate(
+                schema_name=schema_hint,
+                score=1.0,
+                evidence=["harness schema oracle"],
+            )
+        ]
     prediction = SourceConceptSchemaRanker().rank(
         SchemaRankingRequest(
             request_id=mapping_input.cluster_id,

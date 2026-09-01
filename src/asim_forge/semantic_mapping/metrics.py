@@ -32,6 +32,11 @@ class EvaluationMetrics(StrictModel):
     field_macro_f1: float = Field(ge=0, le=1)
     field_mrr: float = Field(ge=0, le=1)
     field_recall_at_gold: float = Field(ge=0, le=1)
+    candidate_recall_at_1: float = Field(default=0.0, ge=0, le=1)
+    candidate_recall_at_3: float = Field(default=0.0, ge=0, le=1)
+    candidate_recall_at_5: float = Field(default=0.0, ge=0, le=1)
+    candidate_reduction_ratio: float = Field(default=0.0, ge=0, le=1)
+    field_top1_tie_rate: float = Field(default=0.0, ge=0, le=1)
     mapping_exact_match: float = Field(ge=0, le=1)
     full_exact_match: float = Field(ge=0, le=1)
     mean_mapping_edits: float = Field(ge=0)
@@ -72,6 +77,11 @@ def evaluate_predictions(
     field_case_f1: list[float] = []
     field_rr: list[float] = []
     field_recall_at_gold: list[float] = []
+    candidate_hits = {1: 0, 3: 0, 5: 0}
+    candidate_total = 0
+    reduction_ratios: list[float] = []
+    tied_top_fields = 0
+    predicted_field_count = 0
     mapping_exact = full_exact = 0
     mapping_edits: list[int] = []
     mapped_gold_count = 0
@@ -80,6 +90,17 @@ def evaluate_predictions(
         prediction = predictions_by_id[case.case_id]
         disposition_correct += prediction.disposition == case.expected.disposition
         mapped_predictions += prediction.disposition == "mapped"
+
+        for predicted_field in prediction.asim_fields:
+            predicted_field_count += 1
+            tied_top_fields += predicted_field.ranked_candidates[0].tied_with > 0
+            if predicted_field.candidate_pool_size is None:
+                continue
+            if not predicted_field.considered_field_count:
+                continue
+            reduction_ratios.append(
+                1 - (predicted_field.candidate_pool_size / predicted_field.considered_field_count)
+            )
 
         expected_sources = _expected_source_set(case)
         predicted_sources = _predicted_source_set(prediction)
@@ -123,6 +144,9 @@ def evaluate_predictions(
         schema_top3 += expected_schema in ranked_schema_names[:3]
         schema_rr.append(_reciprocal_rank(expected_schema, ranked_schema_names))
         field_rr.extend(_field_reciprocal_ranks(case, prediction))
+        for cutoff, hits in _candidate_hits(case, prediction).items():
+            candidate_hits[cutoff] += hits
+        candidate_total += len(case.expected.asim_fields)
 
         fields_exact = expected_schema == predicted_schema and expected_fields == predicted_fields
         mapping_exact += fields_exact
@@ -148,6 +172,11 @@ def evaluate_predictions(
         field_macro_f1=_mean(field_case_f1),
         field_mrr=_mean(field_rr),
         field_recall_at_gold=_mean(field_recall_at_gold),
+        candidate_recall_at_1=_ratio(candidate_hits[1], candidate_total),
+        candidate_recall_at_3=_ratio(candidate_hits[3], candidate_total),
+        candidate_recall_at_5=_ratio(candidate_hits[5], candidate_total),
+        candidate_reduction_ratio=_mean(reduction_ratios),
+        field_top1_tie_rate=_ratio(tied_top_fields, predicted_field_count),
         mapping_exact_match=round(mapping_exact / len(cases), 6),
         full_exact_match=round(full_exact / len(cases), 6),
         mean_mapping_edits=round(sum(mapping_edits) / len(cases), 6),
@@ -225,6 +254,27 @@ def _field_reciprocal_ranks(
     return ranks
 
 
+def _candidate_hits(
+    case: SemanticMappingCase,
+    prediction: SemanticMappingPrediction,
+) -> dict[int, int]:
+    """Count expected fields retained by candidate generation at each cut-off."""
+    semantics = {semantic.semantic_id: semantic for semantic in case.expected.source_semantics}
+    retained: dict[tuple[str, str], list[str]] = {
+        (field.source_kind, field.locator.casefold()): [
+            candidate.asim_field for candidate in field.ranked_candidates
+        ]
+        for field in prediction.asim_fields
+    }
+    hits = {1: 0, 3: 0, 5: 0}
+    for expected in case.expected.asim_fields:
+        source = semantics[expected.semantic_id]
+        candidates = retained.get((source.source_kind, source.locator.casefold()), [])
+        for cutoff in hits:
+            hits[cutoff] += expected.asim_field in candidates[:cutoff]
+    return hits
+
+
 def _field_recall_at_ground_truth(
     case: SemanticMappingCase,
     prediction: SemanticMappingPrediction,
@@ -277,3 +327,7 @@ def _reciprocal_rank(expected: str, ranked: list[str]) -> float:
 
 def _mean(values: list[float]) -> float:
     return round(sum(values) / len(values), 6) if values else 0.0
+
+
+def _ratio(numerator: int, denominator: int) -> float:
+    return round(numerator / denominator, 6) if denominator else 0.0

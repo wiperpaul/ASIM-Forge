@@ -60,7 +60,19 @@ class CaseRetrievalApproach:
         for case, score in references:
             if case.expected.schema_name in catalog.manifest.schemas:
                 schema_scores[case.expected.schema_name] += score
-        if not schema_scores:
+        if request.schema_hint is not None:
+            if request.schema_hint not in catalog.manifest.schemas:
+                raise ValueError(
+                    f"Schema oracle hint is absent from the catalogue: {request.schema_hint}"
+                )
+            ranked_schemas = [
+                RankedSchemaCandidate(
+                    schema_name=request.schema_hint,
+                    score=1.0,
+                    evidence=["harness schema oracle"],
+                )
+            ]
+        elif not schema_scores:
             return SemanticMappingPrediction(
                 case_id=request.case_id,
                 catalogue_revision=request.catalogue_revision,
@@ -68,19 +80,19 @@ class CaseRetrievalApproach:
                 disposition="unresolved",
                 warnings=["Reference schemas are absent from the pinned catalogue."],
             )
-
-        maximum_schema_score = max(schema_scores.values())
-        ranked_schemas = [
-            RankedSchemaCandidate(
-                schema_name=name,
-                score=round(score / maximum_schema_score, 6),
-                evidence=["weighted vote from similar labelled cases"],
-            )
-            for name, score in sorted(
-                schema_scores.items(),
-                key=lambda item: (-item[1], item[0]),
-            )
-        ]
+        else:
+            maximum_schema_score = max(schema_scores.values())
+            ranked_schemas = [
+                RankedSchemaCandidate(
+                    schema_name=name,
+                    score=round(score / maximum_schema_score, 6),
+                    evidence=["weighted vote from similar labelled cases"],
+                )
+                for name, score in sorted(
+                    schema_scores.items(),
+                    key=lambda item: (-item[1], item[0]),
+                )
+            ]
         selected_schema = ranked_schemas[0].schema_name
         valid_fields = {field.name for field in catalog.fields_for_schema(selected_schema)}
 

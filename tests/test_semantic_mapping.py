@@ -8,6 +8,7 @@ from asim_forge.evaluation import SemanticMappingCase, load_semantic_mapping_cas
 from asim_forge.models import AsimCatalog, AsimCatalogField, AsimCatalogManifest
 from asim_forge.semantic_mapping.approaches.case_retrieval import CaseRetrievalApproach
 from asim_forge.semantic_mapping.approaches.direct_lexical import DirectLexicalApproach
+from asim_forge.semantic_mapping.approaches.priors import FieldFrequencyPriorApproach
 from asim_forge.semantic_mapping.approaches.semantic_frame import SemanticFrameApproach
 from asim_forge.semantic_mapping.comparison import (
     ComparisonError,
@@ -17,6 +18,11 @@ from asim_forge.semantic_mapping.comparison import (
 from asim_forge.semantic_mapping.contracts import (
     MappingRequest,
     SemanticMappingPrediction,
+)
+from asim_forge.semantic_mapping.field_ranking import (
+    generate_candidates,
+    rank_field_candidates,
+    score_candidates,
 )
 from asim_forge.semantic_mapping.metrics import EvaluationError, evaluate_predictions
 
@@ -393,7 +399,14 @@ def test_comparison_reports_all_registered_approaches() -> None:
     direct = evaluations["direct-lexical"].metrics
     frame = evaluations["semantic-frame"].metrics
     retrieval = evaluations["case-retrieval"]
-    assert set(evaluations) == {"direct-lexical", "semantic-frame", "case-retrieval"}
+    assert set(evaluations) == {
+        "null-prior",
+        "majority-schema-prior",
+        "field-frequency-prior",
+        "direct-lexical",
+        "semantic-frame",
+        "case-retrieval",
+    }
     assert direct.schema_top1_accuracy == 1
     assert direct.field_micro_recall == 0.75
     assert direct.source_micro_f1 == 0
@@ -446,6 +459,86 @@ def test_comparison_rejects_invalid_approach_selection(
         compare_approaches([case], _catalog(), approaches)
 
 
+def test_candidate_generation_is_reported_separately_from_the_ranking_cut() -> None:
+    fields = _catalog().fields_for_schema("NetworkSession")
+
+    ranking = rank_field_candidates(fields, "source ip address", limit=1)
+
+    assert len(ranking.candidates) == 1
+    assert ranking.pool_size >= len(ranking.candidates)
+    assert ranking.considered_field_count >= ranking.pool_size
+    assert ranking.candidates == score_candidates(
+        generate_candidates(fields, "source ip address"), limit=1
+    )
+
+
+def test_candidate_generation_discards_fields_without_lexical_evidence() -> None:
+    fields = _catalog().fields_for_schema("NetworkSession")
+
+    assert generate_candidates(fields, "zzzz-no-catalogue-concept") == []
+
+
+def test_score_candidates_records_equal_score_ties() -> None:
+    fields = _catalog().fields_for_schema("NetworkSession")
+
+    candidates = score_candidates(generate_candidates(fields, "address"), limit=5)
+
+    for candidate in candidates:
+        tied = [other for other in candidates if other.score == candidate.score]
+        assert candidate.tied_with == len(tied) - 1
+
+
+def test_priors_establish_a_floor_without_reading_the_source_event() -> None:
+    case = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
+
+    report = compare_approaches(
+        [case],
+        _catalog(),
+        ["null-prior", "majority-schema-prior", "field-frequency-prior"],
+    )
+
+    evaluations = {evaluation.approach.name: evaluation for evaluation in report.approaches}
+    assert set(evaluations) == {"null-prior", "majority-schema-prior", "field-frequency-prior"}
+    assert evaluations["null-prior"].metrics.coverage == 0
+    assert evaluations["null-prior"].metrics.field_micro_f1 == 0
+    # Leave-one-out leaves the single example case with no labelled frequency to copy.
+    assert evaluations["field-frequency-prior"].metrics.field_micro_f1 == 0
+
+
+def test_field_frequency_prior_copies_the_majority_label_without_source_evidence() -> None:
+    case = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
+    reference = case.model_copy(update={"case_id": "demo.network.allowed.reference"})
+
+    prediction = FieldFrequencyPriorApproach([reference]).predict(_request(), _catalog())
+
+    assert prediction.disposition == "mapped"
+    assert prediction.ranked_schemas[0].schema_name == "NetworkSession"
+    assigned = {field.asim_field for field in prediction.asim_fields}
+    # A prior must ignore the event, so every slot receives the same majority label.
+    assert len(assigned) == 1
+    assert all(
+        "no source evidence used" in " ".join(field.evidence) for field in prediction.asim_fields
+    )
+
+
+def test_comparison_warns_when_no_prior_supplies_a_floor() -> None:
+    case = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
+
+    report = compare_approaches([case], _catalog(), ["direct-lexical"])
+
+    assert any("no floor" in warning for warning in report.warnings)
+
+
+def test_schema_oracle_is_reported_as_a_diagnostic_condition() -> None:
+    case = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
+
+    report = compare_approaches([case], _catalog(), ["direct-lexical"], oracle="schema")
+
+    assert report.oracle == "schema"
+    assert report.approaches[0].metrics.schema_top1_accuracy == 1
+    assert any("not approach accuracy" in warning for warning in report.approaches[0].warnings)
+
+
 def test_writes_reproducible_comparison_report(tmp_path: Path) -> None:
     case = load_semantic_mapping_cases(EXAMPLE_CASES)[0]
     report = compare_approaches([case], _catalog(), ["semantic-frame"])
@@ -482,7 +575,8 @@ def test_cli_compares_a_selected_approach(
     )
 
     stdout = capsys.readouterr().out
-    assert "field-r@gt" in stdout
+    assert "cand@1" in stdout
     assert "semantic-frame" in stdout
     assert "direct-lexical" not in stdout
+    assert "no floor" in stdout
     assert output.is_file()

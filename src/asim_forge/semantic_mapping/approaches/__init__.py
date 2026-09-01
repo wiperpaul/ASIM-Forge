@@ -8,12 +8,33 @@ from typing import TYPE_CHECKING
 from ..contracts import SemanticMappingApproach
 from .case_retrieval import CaseRetrievalApproach
 from .direct_lexical import DirectLexicalApproach
+from .priors import (
+    FieldFrequencyPriorApproach,
+    MajoritySchemaPriorApproach,
+    NullPriorApproach,
+)
 from .semantic_frame import SemanticFrameApproach
 
 if TYPE_CHECKING:
     from ...evaluation import SemanticMappingCase
 
 ApproachFactory = Callable[[Sequence["SemanticMappingCase"]], SemanticMappingApproach]
+
+
+def _build_null_prior(_: Sequence[SemanticMappingCase]) -> SemanticMappingApproach:
+    return NullPriorApproach()
+
+
+def _build_majority_schema_prior(
+    reference_cases: Sequence[SemanticMappingCase],
+) -> SemanticMappingApproach:
+    return MajoritySchemaPriorApproach(reference_cases)
+
+
+def _build_field_frequency_prior(
+    reference_cases: Sequence[SemanticMappingCase],
+) -> SemanticMappingApproach:
+    return FieldFrequencyPriorApproach(reference_cases)
 
 
 def _build_direct_lexical(_: Sequence[SemanticMappingCase]) -> SemanticMappingApproach:
@@ -30,13 +51,22 @@ def _build_case_retrieval(
     return CaseRetrievalApproach(reference_cases)
 
 
+# Priors are listed first so every report reads the floor before the real approaches.
 _APPROACH_FACTORIES: dict[str, ApproachFactory] = {
+    NullPriorApproach.identity.name: _build_null_prior,
+    MajoritySchemaPriorApproach.identity.name: _build_majority_schema_prior,
+    FieldFrequencyPriorApproach.identity.name: _build_field_frequency_prior,
     DirectLexicalApproach.identity.name: _build_direct_lexical,
     SemanticFrameApproach.identity.name: _build_semantic_frame,
     CaseRetrievalApproach.identity.name: _build_case_retrieval,
 }
 
 APPROACH_NAMES = tuple(_APPROACH_FACTORIES)
+PRIOR_APPROACH_NAMES = (
+    NullPriorApproach.identity.name,
+    MajoritySchemaPriorApproach.identity.name,
+    FieldFrequencyPriorApproach.identity.name,
+)
 
 
 def build_approach(
@@ -54,8 +84,12 @@ def build_approach(
 
 __all__ = [
     "APPROACH_NAMES",
+    "PRIOR_APPROACH_NAMES",
     "CaseRetrievalApproach",
     "DirectLexicalApproach",
+    "FieldFrequencyPriorApproach",
+    "MajoritySchemaPriorApproach",
+    "NullPriorApproach",
     "SemanticFrameApproach",
     "build_approach",
 ]
