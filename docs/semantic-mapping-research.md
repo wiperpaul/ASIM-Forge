@@ -279,3 +279,9 @@ Before choosing a production semantic implementation:
 
 This postpones the expensive semantic-rule feedback cycle without blocking the
 data contracts, review UI, catalogue constraints, or eventual model integration.
+
+The companion [non-LLM baseline and corpus plan](non-llm-baseline-corpus.md)
+turns this experiment into an acquisition design. It keeps parser-derived ASIM,
+paired OCSF, cross-schema source semantics, synthetic stress cases, and future
+adjudicated gold in separate evidence tracks, and measures the additional value of
+each available context layer.

@@ -24,6 +24,11 @@ The public paper corpora provide candidate source events, not ASIM labels. Incid
 anomaly, prompt-injection, and LogHub template labels must never be imported as
 schema or field gold.
 
+The [non-LLM corpus and baseline plan](../../docs/non-llm-baseline-corpus.md)
+defines the automated evidence tracks that should be frozen before these cases are
+used for tuning. Parser-derived and paired-output silver can select and diagnose
+candidate methods, but it does not replace this independent adjudication step.
+
 ## Adjudication workflow
 
 1. Freeze the cluster/template revision and representative events.
