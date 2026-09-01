@@ -398,7 +398,10 @@ Later milestones add catalogue-aware validation, ASIM schema/data tests, parser
 preview, reviewer agreement, release packaging, and opt-in deployment gates. The
 full sequence and exit criteria are in the [roadmap](ROADMAP.md). The research basis
 for the semantic-mapping boundary is in
-[the semantic mapping research note](docs/semantic-mapping-research.md).
+[the semantic mapping research note](docs/semantic-mapping-research.md). The
+[non-LLM corpus and baseline plan](docs/non-llm-baseline-corpus.md) defines the
+evidence ladder, candidate public sources, context ablations, and the boundary
+between executable upstream silver and independent semantic gold.
 
 ## Development
 

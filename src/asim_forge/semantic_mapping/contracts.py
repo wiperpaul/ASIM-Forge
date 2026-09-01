@@ -35,6 +35,8 @@ class MappingRequest(StrictModel):
     case_id: Identifier
     catalogue_revision: str = Field(pattern=r"^[0-9a-f]{40}$")
     input: SemanticMappingInput
+    # Diagnostic oracle constraint set only by the evaluation harness, never in production.
+    schema_hint: AsimName | None = None
 
 
 class ApproachIdentity(StrictModel):
@@ -51,6 +53,8 @@ class RankedSchemaCandidate(StrictModel):
 class RankedFieldCandidate(StrictModel):
     asim_field: AsimName
     score: float = Field(ge=0, le=1)
+    # Other generated candidates holding this identical score before the cut-off.
+    tied_with: int = Field(default=0, ge=0)
     evidence: list[str] = Field(default_factory=list)
 
 
@@ -69,6 +73,9 @@ class PredictedAsimField(StrictModel):
     constant_value: str | int | float | bool | None = None
     score: float = Field(ge=0, le=1)
     ranked_candidates: list[RankedFieldCandidate] = Field(min_length=1)
+    # Candidate generation sizes, kept so retrieval loss stays separable from ranking loss.
+    candidate_pool_size: int | None = Field(default=None, ge=0)
+    considered_field_count: int | None = Field(default=None, ge=0)
     evidence: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
