@@ -7,6 +7,8 @@ from pathlib import Path
 
 from ..benchmarking import run_benchmarks
 from ..catalog import load_catalog
+from ..controlled import run_robustness, write_robustness_report
+from ..controlled.robustness import ROBUSTNESS_APPROACH_NAMES
 from ..evaluation import EvaluationError, SemanticMappingCase, load_semantic_mapping_cases
 from ..evaluation_splits import (
     SemanticDatasetSplit,
@@ -200,6 +202,26 @@ def register_evaluation_parser(
         type=Path,
         help="Promotion manifest that authenticates the cases and case groups",
     )
+    evaluation_robustness = evaluation_subparsers.add_parser(
+        "robustness",
+        help="Score approaches against controlled perturbations of the seed cases",
+    )
+    evaluation_robustness.add_argument("cases", type=Path, help="Seed semantic mapping cases")
+    evaluation_robustness.add_argument(
+        "--catalog", type=Path, required=True, help="Pinned ASIM catalogue directory"
+    )
+    evaluation_robustness.add_argument(
+        "--approach",
+        action="append",
+        choices=ROBUSTNESS_APPROACH_NAMES,
+        dest="approaches",
+        help="Approach to test; repeat to select several (default: all event-reading approaches)",
+    )
+    evaluation_robustness.add_argument(
+        "--output",
+        type=Path,
+        help="Optional path for the complete JSON robustness report",
+    )
     evaluation_benchmark = evaluation_subparsers.add_parser(
         "benchmark",
         help="Run the registered parsing, security-format, and ASIM evaluation corpora",
@@ -369,6 +391,31 @@ def run_evaluation_command(args: argparse.Namespace) -> None:
         _print_paired_tests(report)
         for warning in report.warnings:
             print(f"warning: {warning}")
+    elif args.evaluation_command == "robustness":
+        cases = load_semantic_mapping_cases(args.cases)
+        catalog = load_catalog(args.catalog)
+        robustness = run_robustness(cases, catalog, args.approaches)
+        if args.output is not None:
+            write_robustness_report(args.output, robustness)
+        print(
+            "approach              perturbation       family             "
+            "base-f1  pert-f1   delta  stable  verdict"
+        )
+        for row in robustness.rows:
+            print(
+                f"{row.approach:<21} {row.perturbation:<18} {row.family:<18} "
+                f"{row.baseline_field_micro_f1:>7.3f}  {row.perturbed_field_micro_f1:>7.3f}  "
+                f"{row.field_micro_f1_delta:>+6.3f}  {row.prediction_stability:>6.3f}  "
+                f"{'pass' if row.passed else 'FAIL'}"
+            )
+            for note in row.notes:
+                print(f"  note: {note}")
+        for warning in robustness.warnings:
+            print(f"warning: {warning}")
+        print(
+            "\nControlled robustness slices only. These are generated variants and "
+            "must not be averaged into real-case results."
+        )
     else:
         report = run_benchmarks(
             args.registry,

@@ -67,6 +67,8 @@ PRIOR_APPROACH_NAMES = (
     MajoritySchemaPriorApproach.identity.name,
     FieldFrequencyPriorApproach.identity.name,
 )
+# Approaches whose answer depends on a labelled reference set rather than the event.
+RETRIEVAL_APPROACH_NAMES = (CaseRetrievalApproach.identity.name,)
 
 
 def build_approach(
@@ -85,6 +87,7 @@ def build_approach(
 __all__ = [
     "APPROACH_NAMES",
     "PRIOR_APPROACH_NAMES",
+    "RETRIEVAL_APPROACH_NAMES",
     "CaseRetrievalApproach",
     "DirectLexicalApproach",
     "FieldFrequencyPriorApproach",
