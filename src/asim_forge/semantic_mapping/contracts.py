@@ -29,14 +29,23 @@ def _scores_are_descending(
     )
 
 
+class SourceFrameHint(StrictModel):
+    """One gold source role supplied by the harness oracle."""
+
+    source_kind: SourceKind
+    locator: Locator
+    role: SemanticRole
+
+
 class MappingRequest(StrictModel):
     """Provider input with no access to expected labels."""
 
     case_id: Identifier
     catalogue_revision: str = Field(pattern=r"^[0-9a-f]{40}$")
     input: SemanticMappingInput
-    # Diagnostic oracle constraint set only by the evaluation harness, never in production.
+    # Diagnostic oracle constraints set only by the evaluation harness, never in production.
     schema_hint: AsimName | None = None
+    frame_hint: list[SourceFrameHint] | None = None
 
 
 class ApproachIdentity(StrictModel):

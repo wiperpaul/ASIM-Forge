@@ -47,9 +47,14 @@ class SemanticFrameApproach:
         fields = catalog.fields_for_schema(schemas[0].schema_name)
         semantics: list[PredictedSourceSemantic] = []
         mappings: list[PredictedAsimField] = []
+        oracle_roles = _oracle_roles(request)
         for slot in request.input.parameter_slots:
             context = slot_context(request.input, slot)
-            role = _infer_slot_role(request.input, slot, context)
+            role = oracle_roles.get(("slot", slot.slot_id))
+            evidence = "harness source-frame oracle"
+            if role is None:
+                role = _infer_slot_role(request.input, slot, context)
+                evidence = f"normalized slot context: {context}"
             if role is None:
                 continue
             semantics.append(
@@ -58,7 +63,7 @@ class SemanticFrameApproach:
                     locator=slot.slot_id,
                     role=role,
                     score=1.0,
-                    evidence=[f"normalized slot context: {context}"],
+                    evidence=[evidence],
                 )
             )
             candidates = rank_field_candidates(fields, f"{role} {slot.label}")
@@ -116,6 +121,13 @@ class SemanticFrameApproach:
             asim_fields=mappings,
             warnings=warnings,
         )
+
+
+def _oracle_roles(request: MappingRequest) -> dict[tuple[str, str], str]:
+    """Gold roles supplied by the harness, isolating projection from inference."""
+    if not request.frame_hint:
+        return {}
+    return {(hint.source_kind, hint.locator): hint.role for hint in request.frame_hint}
 
 
 def _infer_slot_role(

@@ -16,10 +16,12 @@ from ..evaluation_splits import (
 )
 from ..models import AsimCatalog, StrictModel
 from .approaches import APPROACH_NAMES, PRIOR_APPROACH_NAMES, build_approach
+from .context_views import ContextView, apply_context_view
 from .contracts import (
     ApproachIdentity,
     MappingRequest,
     SemanticMappingPrediction,
+    SourceFrameHint,
 )
 from .metrics import EvaluationError, EvaluationMetrics, evaluate_predictions
 from .statistics import (
@@ -34,7 +36,14 @@ from .statistics import (
     risk_coverage_curve,
 )
 
-OracleCondition = Literal["none", "schema"]
+OracleCondition = Literal["none", "schema", "source-frame", "schema-and-source-frame"]
+
+ORACLE_CONDITIONS: tuple[OracleCondition, ...] = (
+    "none",
+    "schema",
+    "source-frame",
+    "schema-and-source-frame",
+)
 
 
 class ComparisonError(EvaluationError):
@@ -58,6 +67,7 @@ class ComparisonReport(StrictModel):
     split_id: str | None = None
     evaluation_partition: EvaluationPartition | None = None
     oracle: OracleCondition = "none"
+    context_view: ContextView = "full"
     sample: SampleAdequacy | None = None
     approaches: list[ApproachEvaluation] = Field(min_length=1)
     paired_tests: list[PairedApproachTest] = Field(default_factory=list)
@@ -73,6 +83,7 @@ def compare_approaches(
     split_id: str | None = None,
     evaluation_partition: EvaluationPartition | None = None,
     oracle: OracleCondition = "none",
+    context_view: ContextView = "full",
     split: SemanticDatasetSplit | None = None,
     resamples: int = DEFAULT_RESAMPLES,
     baseline_approach: str | None = None,
@@ -111,8 +122,9 @@ def compare_approaches(
                     MappingRequest(
                         case_id=case.case_id,
                         catalogue_revision=case.catalogue_revision,
-                        input=case.input,
-                        schema_hint=case.expected.schema_name if oracle == "schema" else None,
+                        input=apply_context_view(case.input, context_view),
+                        schema_hint=_schema_hint(case, oracle),
+                        frame_hint=_frame_hint(case, oracle),
                     ),
                     catalog,
                 )
@@ -129,6 +141,7 @@ def compare_approaches(
                     predictions,
                     has_grouped_split=reference_cases is not None,
                     oracle=oracle,
+                    context_view=context_view,
                 ),
             )
         )
@@ -148,6 +161,7 @@ def compare_approaches(
         split_id=split_id,
         evaluation_partition=evaluation_partition,
         oracle=oracle,
+        context_view=context_view,
         sample=sample,
         approaches=evaluations,
         paired_tests=paired_tests,
@@ -163,6 +177,7 @@ def compare_split_approaches(
     approach_names: list[str] | None = None,
     *,
     oracle: OracleCondition = "none",
+    context_view: ContextView = "full",
     resamples: int = DEFAULT_RESAMPLES,
     baseline_approach: str | None = None,
 ) -> ComparisonReport:
@@ -175,6 +190,7 @@ def compare_split_approaches(
         split_id=selection.split_id,
         evaluation_partition=selection.evaluation_partition,
         oracle=oracle,
+        context_view=context_view,
         split=split,
         resamples=resamples,
         baseline_approach=baseline_approach,
@@ -196,11 +212,17 @@ def _evaluation_warnings(
     *,
     has_grouped_split: bool,
     oracle: OracleCondition = "none",
+    context_view: ContextView = "full",
 ) -> list[str]:
     warnings: list[str] = []
     if oracle != "none":
         warnings.append(
             f"{oracle} oracle condition: an error-decomposition diagnostic, not approach accuracy."
+        )
+    if context_view != "full":
+        warnings.append(
+            f"{context_view} context view: evidence was withheld, so this is an ablation "
+            "rather than the approach's own result."
         )
     if len(cases) < 20:
         warnings.append("Fewer than 20 cases: results are a harness smoke test, not evidence.")
@@ -216,6 +238,28 @@ def _evaluation_warnings(
     if not any(prediction.disposition == "mapped" for prediction in predictions):
         warnings.append("Approach produced no mapped predictions for this case set.")
     return warnings
+
+
+def _schema_hint(case: SemanticMappingCase, oracle: OracleCondition) -> str | None:
+    if oracle in ("schema", "schema-and-source-frame"):
+        return case.expected.schema_name
+    return None
+
+
+def _frame_hint(
+    case: SemanticMappingCase,
+    oracle: OracleCondition,
+) -> list[SourceFrameHint] | None:
+    if oracle not in ("source-frame", "schema-and-source-frame"):
+        return None
+    return [
+        SourceFrameHint(
+            source_kind=semantic.source_kind,
+            locator=semantic.locator,
+            role=semantic.role,
+        )
+        for semantic in case.expected.source_semantics
+    ]
 
 
 def _paired_tests(
