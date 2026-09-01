@@ -1,7 +1,7 @@
 # Corpus benchmarks and evaluation releases
 
 The release-style benchmark answers a narrow question: did a code or evaluation-data
-change alter ASIM Forge's behaviour on a fixed, inspectable corpus? It does not turn
+change alter LogLathe's behaviour on a fixed, inspectable corpus? It does not turn
 every upstream security benchmark label into ASIM ground truth.
 
 ## Four evaluation tracks
@@ -9,13 +9,20 @@ every upstream security benchmark label into ASIM ground truth.
 | Track | What is scored | What must not be inferred |
 | --- | --- | --- |
 | `parsing-gold` | Pairwise template-clustering precision, recall, F1, and cluster purity against LogHub `EventId` labels. | Incident detection, ASIM schema selection, and field mapping. |
-| `format-diagnostic` | Event/cluster counts, clusters with parameter slots, and the event-weighted rate receiving a provisional non-`NoFit` keyword suggestion. | Accuracy. These corpora have no adjudicated ASIM answer key. |
+| `format-diagnostic` | Event/cluster counts, clusters with parameter slots, and the event-weighted rate receiving a provisional non-`NoFit` source-concept suggestion. | Accuracy. These corpora have no adjudicated ASIM answer key. |
 | `schema-hint` | Event- and cluster-weighted schema agreement against an upstream file-level ASIM placement hint. | Independent schema correctness or any field-mapping correctness. The hint was created for parser development, not this benchmark. |
-| `semantic-gold` | Schema ranking, source-role F1, field F1/ranking, exact match, coverage, and edits against ASIM Forge cases. | Production quality when the case set is small, synthetic, or not representative. |
+| `semantic-gold` | Schema ranking, source-role F1, field F1/ranking, exact match, coverage, and edits against LogLathe cases. | Production quality when the case set is small, synthetic, or not representative. |
 
 The provisional ASIM-fit diagnostic is deliberately named as such. It measures the
-current keyword baseline's willingness to suggest one of the implemented schemas;
-it does not say that the suggestion is correct.
+current source-concept baseline's willingness to suggest one of the implemented
+schemas; it does not say that the suggestion is correct. The baseline uses the same
+target-neutral tokenization primitives as the semantic approaches and returns
+`NoFit` when the leading schemas have equal evidence.
+
+Schema-hint and format-diagnostic rows identify that phase as `source-concept-v1`;
+parsing-gold rows remain `deepparse-default`. Earlier reports that attributed both
+operations to `deepparse-default` intentionally start a new schema-ranking baseline
+series rather than presenting unlike approach identities as a numeric delta.
 
 The schema-hint track is deliberately weaker than semantic gold. Microsoft ASIM
 sample filenames and placement identify the parser schema they were collected for,

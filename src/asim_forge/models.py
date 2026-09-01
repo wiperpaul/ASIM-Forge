@@ -45,16 +45,19 @@ class SchemaSuggestion(StrictModel):
     schema_name: Literal["Authentication", "NetworkSession", "AuditEvent", "NoFit"]
     confidence: float = Field(ge=0, le=1)
     ranked_scores: list[SchemaScore]
-    method: Literal["keyword-baseline"] = "keyword-baseline"
+    method: Literal["keyword-baseline", "source-concept-v1"] = "keyword-baseline"
 
 
-class ClusterRecord(StrictModel):
+class ParsedCluster(StrictModel):
     cluster_id: str
     engine_cluster_id: int = Field(ge=1)
     template: str
     event_count: int = Field(ge=1)
     representative_events: list[SourceEvent]
     parameter_slots: list[ParameterSlot] = Field(default_factory=list)
+
+
+class ClusterRecord(ParsedCluster):
     schema_suggestion: SchemaSuggestion
 
 
@@ -67,8 +70,8 @@ class ReviewTask(StrictModel):
     event_count: int
     representative_events_table: dict[str, object]
     parameter_slots_table: dict[str, object]
-    suggested_schema: str
-    suggestion_confidence: float
+    suggested_schema: str | None = None
+    suggestion_confidence: float | None = Field(default=None, ge=0, le=1)
     parameter_slots: list[dict[str, object]]
 
 

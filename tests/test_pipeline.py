@@ -29,6 +29,19 @@ def test_builds_typed_clusters_and_potato_bundle(tmp_path: Path) -> None:
         "Authentication",
         "NetworkSession",
     }
+    rankings = [
+        json.loads(line)
+        for line in (output_dir / "schema-rankings.jsonl").read_text("utf-8").splitlines()
+    ]
+    assert {prediction["selected_schema"] for prediction in rankings} == {
+        "Authentication",
+        "NetworkSession",
+    }
+    assert all(
+        prediction["approach"] == {"name": "source-concept", "version": "1"}
+        for prediction in rankings
+    )
+    assert manifest.outputs["schema_rankings"] == "schema-rankings.jsonl"
     assert all(record["parameter_slots"] for record in records)
     review_items = [
         json.loads(line)
@@ -45,6 +58,7 @@ def test_builds_typed_clusters_and_potato_bundle(tmp_path: Path) -> None:
         for item in review_items
     )
     assert all("predictions" not in item for item in review_items)
+    assert all("suggested_schema" not in item for item in review_items)
 
     config = yaml.safe_load((output_dir / "potato" / "config.yaml").read_text("utf-8"))
     assert config["task_dir"] == "."

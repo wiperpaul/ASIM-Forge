@@ -25,6 +25,7 @@ from .evaluation_splits import (
 )
 from .ingestion import read_events
 from .models import StrictModel
+from .schema_ranking import rank_clusters
 from .semantic_annotation import validate_semantic_promotion_artifacts
 from .semantic_mapping.comparison import compare_approaches, compare_split_approaches
 
@@ -267,6 +268,7 @@ def run_benchmarks(
                 sample_size=manifest.sample_size,
                 samples_per_cluster=manifest.samples_per_cluster,
             ).cluster(events)
+            result_approach = "deepparse-default"
             if manifest.track == "parsing-gold":
                 gold = _read_gold(resource_paths["gold"], manifest.gold_column or "")
                 if len(gold) != len(clustering.assignments):
@@ -278,49 +280,55 @@ def run_benchmarks(
                 primary = "pair_f1"
             elif manifest.track == "schema-hint":
                 assert manifest.schema_hint is not None
+                ranking = rank_clusters(clustering.clusters)
+                ranked_clusters = ranking.clusters
                 matching_clusters = sum(
                     cluster.schema_suggestion.schema_name == manifest.schema_hint
-                    for cluster in clustering.clusters
+                    for cluster in ranked_clusters
                 )
                 matching_events = sum(
                     cluster.event_count
-                    for cluster in clustering.clusters
+                    for cluster in ranked_clusters
                     if cluster.schema_suggestion.schema_name == manifest.schema_hint
                 )
                 fit_events = sum(
                     cluster.event_count
-                    for cluster in clustering.clusters
+                    for cluster in ranked_clusters
                     if cluster.schema_suggestion.schema_name != "NoFit"
                 )
                 metrics = {
-                    "cluster_count": len(clustering.clusters),
+                    "cluster_count": len(ranked_clusters),
                     "provisional_asim_fit_event_rate": round(fit_events / len(events), 6),
                     "schema_hint_cluster_agreement": round(
-                        matching_clusters / len(clustering.clusters), 6
+                        matching_clusters / len(ranked_clusters), 6
                     ),
                     "schema_hint_event_agreement": round(matching_events / len(events), 6),
                 }
                 primary = "schema_hint_event_agreement"
+                identity = ranking.predictions[0].approach
+                result_approach = f"{identity.name}-v{identity.version}"
             else:
-                slot_clusters = sum(
-                    bool(cluster.parameter_slots) for cluster in clustering.clusters
-                )
+                ranking = rank_clusters(clustering.clusters)
+                ranked_clusters = ranking.clusters
+                slot_clusters = sum(bool(cluster.parameter_slots) for cluster in ranked_clusters)
                 fit_events = sum(
                     cluster.event_count
-                    for cluster in clustering.clusters
+                    for cluster in ranked_clusters
                     if cluster.schema_suggestion.schema_name != "NoFit"
                 )
                 metrics = {
-                    "cluster_count": len(clustering.clusters),
-                    "slot_cluster_rate": round(slot_clusters / len(clustering.clusters), 6),
+                    "cluster_count": len(ranked_clusters),
+                    "slot_cluster_rate": round(slot_clusters / len(ranked_clusters), 6),
                     "provisional_asim_fit_event_rate": round(fit_events / len(events), 6),
                 }
                 primary = "provisional_asim_fit_event_rate"
+                identity = ranking.predictions[0].approach
+                result_approach = f"{identity.name}-v{identity.version}"
             results.append(
                 BenchmarkRow(
                     corpus_id=manifest.corpus_id,
                     track=manifest.track,
-                    approach="deepparse-default",
+                    approach=result_approach,
                     item_count=len(events),
                     metrics=metrics,
                     primary_metric=primary,

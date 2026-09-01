@@ -9,13 +9,13 @@ from pathlib import Path
 
 import yaml
 
-from .models import ClusterRecord, ReviewTask
+from .models import ParsedCluster, ReviewTask
 
 _PLACEHOLDER = re.compile(r"<VAR:[A-Za-z0-9_]+>")
 
 
 def write_potato_bundle(
-    clusters: list[ClusterRecord],
+    clusters: list[ParsedCluster],
     output_dir: Path,
 ) -> tuple[Path, Path]:
     bundle_dir = output_dir / "potato"
@@ -24,7 +24,7 @@ def write_potato_bundle(
     config_path = bundle_dir / "config.yaml"
 
     tasks = [_to_review_task(cluster) for cluster in clusters]
-    _write_jsonl(items_path, [task.model_dump(mode="json") for task in tasks])
+    _write_jsonl(items_path, [task.model_dump(mode="json", exclude_none=True) for task in tasks])
     config_path.write_text(
         yaml.safe_dump(_potato_config(), sort_keys=False, allow_unicode=True),
         encoding="utf-8",
@@ -32,7 +32,7 @@ def write_potato_bundle(
     return items_path, config_path
 
 
-def _to_review_task(cluster: ClusterRecord) -> ReviewTask:
+def _to_review_task(cluster: ParsedCluster) -> ReviewTask:
     samples = "\n".join(
         f"[{event.source_file}:{event.line_number}] {event.text}"
         for event in cluster.representative_events
@@ -72,13 +72,11 @@ def _to_review_task(cluster: ClusterRecord) -> ReviewTask:
         event_count=cluster.event_count,
         representative_events_table=representative_events_table,
         parameter_slots_table=parameter_slots_table,
-        suggested_schema=cluster.schema_suggestion.schema_name,
-        suggestion_confidence=cluster.schema_suggestion.confidence,
         parameter_slots=[slot.model_dump(mode="json") for slot in cluster.parameter_slots],
     )
 
 
-def _render_template_html(cluster: ClusterRecord) -> str:
+def _render_template_html(cluster: ParsedCluster) -> str:
     parts: list[str] = []
     cursor = 0
     matches = list(_PLACEHOLDER.finditer(cluster.template))

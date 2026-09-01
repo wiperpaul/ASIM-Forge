@@ -9,13 +9,15 @@ from ...contracts import (
     PredictedAsimField,
     SemanticMappingPrediction,
 )
-from .._lexical import rank_fields, rank_schemas, slot_context
+from ...field_ranking import rank_fields
+from ...schema_candidates import rank_schemas
+from ...source_context import slot_context
 
 
 class DirectLexicalApproach:
     """Rank ASIM fields directly from local slot context."""
 
-    identity = ApproachIdentity(name="direct-lexical", version="1")
+    identity = ApproachIdentity(name="direct-lexical", version="3")
 
     def predict(
         self,
