@@ -8,6 +8,7 @@ from pydantic import Field
 
 from ..evaluation import SemanticMappingCase
 from ..models import StrictModel
+from ..source_semantics import FACET_NAMES, facet_keys, registered_role
 from .contracts import SemanticMappingPrediction
 
 
@@ -26,6 +27,13 @@ class EvaluationMetrics(StrictModel):
     source_micro_recall: float = Field(ge=0, le=1)
     source_micro_f1: float = Field(ge=0, le=1)
     source_macro_f1: float = Field(ge=0, le=1)
+    # Facet scores read a near miss as a near miss rather than a total failure.
+    source_facet_micro_f1: float = Field(default=0.0, ge=0, le=1)
+    source_domain_f1: float = Field(default=0.0, ge=0, le=1)
+    source_relation_f1: float = Field(default=0.0, ge=0, le=1)
+    source_entity_f1: float = Field(default=0.0, ge=0, le=1)
+    source_property_f1: float = Field(default=0.0, ge=0, le=1)
+    unregistered_role_rate: float = Field(default=0.0, ge=0, le=1)
     field_micro_precision: float = Field(ge=0, le=1)
     field_micro_recall: float = Field(ge=0, le=1)
     field_micro_f1: float = Field(ge=0, le=1)
@@ -72,6 +80,9 @@ def evaluate_predictions(
     schema_top3 = 0
     schema_rr: list[float] = []
     source_tp = source_fp = source_fn = 0
+    facet_counts: dict[str, list[int]] = {name: [0, 0, 0] for name in FACET_NAMES}
+    unregistered_roles = 0
+    predicted_role_count = 0
     field_tp = field_fp = field_fn = 0
     source_case_f1: list[float] = []
     field_case_f1: list[float] = []
@@ -109,6 +120,14 @@ def evaluate_predictions(
         source_fp += fp
         source_fn += fn
         source_case_f1.append(f1)
+
+        for facet, (tp, fp, fn) in _facet_scores(expected_sources, predicted_sources).items():
+            facet_counts[facet][0] += tp
+            facet_counts[facet][1] += fp
+            facet_counts[facet][2] += fn
+        for semantic in prediction.source_semantics:
+            predicted_role_count += 1
+            unregistered_roles += registered_role(semantic.role) is None
 
         expected_fields = expected_field_set(case)
         predicted_fields = predicted_field_set(prediction)
@@ -154,6 +173,7 @@ def evaluate_predictions(
 
     source_precision, source_recall, source_f1 = _micro_scores(source_tp, source_fp, source_fn)
     field_precision, field_recall, field_f1 = _micro_scores(field_tp, field_fp, field_fn)
+    facet_f1 = {facet: _micro_scores(*counts)[2] for facet, counts in facet_counts.items()}
     schema_divisor = mapped_gold_count or 1
     return EvaluationMetrics(
         case_count=len(cases),
@@ -166,6 +186,12 @@ def evaluate_predictions(
         source_micro_recall=source_recall,
         source_micro_f1=source_f1,
         source_macro_f1=_mean(source_case_f1),
+        source_facet_micro_f1=round(sum(facet_f1.values()) / len(facet_f1), 6),
+        source_domain_f1=facet_f1["domain"],
+        source_relation_f1=facet_f1["relation"],
+        source_entity_f1=facet_f1["entity"],
+        source_property_f1=facet_f1["property"],
+        unregistered_role_rate=_ratio(unregistered_roles, predicted_role_count),
         field_micro_precision=field_precision,
         field_micro_recall=field_recall,
         field_micro_f1=field_f1,
@@ -181,6 +207,24 @@ def evaluate_predictions(
         full_exact_match=round(full_exact / len(cases), 6),
         mean_mapping_edits=round(sum(mapping_edits) / len(cases), 6),
     )
+
+
+def _facet_scores(
+    expected: set[tuple[str, str, str]],
+    predicted: set[tuple[str, str, str]],
+) -> dict[str, tuple[int, int, int]]:
+    """Score each facet on (kind, locator) pairs so one wrong facet costs one facet."""
+    scores: dict[str, tuple[int, int, int]] = {}
+    for facet in FACET_NAMES:
+        expected_facet = {
+            (kind, locator, facet_keys(role)[facet]) for kind, locator, role in expected
+        }
+        predicted_facet = {
+            (kind, locator, facet_keys(role)[facet]) for kind, locator, role in predicted
+        }
+        tp, fp, fn, _ = set_scores(expected_facet, predicted_facet)
+        scores[facet] = (tp, fp, fn)
+    return scores
 
 
 def _expected_source_set(case: SemanticMappingCase) -> set[tuple[str, str, str]]:

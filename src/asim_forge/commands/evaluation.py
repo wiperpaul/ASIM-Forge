@@ -21,11 +21,13 @@ from ..semantic_annotation import (
 )
 from ..semantic_mapping import APPROACH_NAMES
 from ..semantic_mapping.comparison import (
+    ORACLE_CONDITIONS,
     ComparisonReport,
     compare_approaches,
     compare_split_approaches,
     write_comparison_report,
 )
+from ..semantic_mapping.context_views import CONTEXT_VIEWS, VIEW_DESCRIPTIONS
 from ..semantic_mapping.statistics import DEFAULT_RESAMPLES
 
 
@@ -163,9 +165,16 @@ def register_evaluation_parser(
     )
     evaluation_compare.add_argument(
         "--oracle",
-        choices=("none", "schema"),
+        choices=ORACLE_CONDITIONS,
         default="none",
-        help="Diagnostic condition supplying the gold schema to isolate field-ranking error",
+        help="Diagnostic condition supplying gold schema or source roles to isolate error",
+    )
+    evaluation_compare.add_argument(
+        "--context-view",
+        choices=CONTEXT_VIEWS,
+        default="full",
+        dest="context_view",
+        help="Physically withhold evidence to measure what each context layer is worth",
     )
     evaluation_compare.add_argument(
         "--resamples",
@@ -286,6 +295,7 @@ def run_evaluation_command(args: argparse.Namespace) -> None:
                 catalog,
                 args.approaches,
                 oracle=args.oracle,
+                context_view=args.context_view,
                 resamples=args.resamples,
                 baseline_approach=args.baseline_approach,
             )
@@ -305,6 +315,7 @@ def run_evaluation_command(args: argparse.Namespace) -> None:
                 args.partition,
                 args.approaches,
                 oracle=args.oracle,
+                context_view=args.context_view,
                 resamples=args.resamples,
                 baseline_approach=args.baseline_approach,
             )
@@ -317,6 +328,8 @@ def run_evaluation_command(args: argparse.Namespace) -> None:
             )
         if report.oracle != "none":
             print(f"oracle={report.oracle} (diagnostic condition, not approach accuracy)")
+        if report.context_view != "full":
+            print(f"context-view={report.context_view} ({VIEW_DESCRIPTIONS[report.context_view]})")
         if report.sample is not None:
             print(
                 f"cases={report.sample.case_count} "

@@ -115,6 +115,29 @@ a provider emits probabilities, as
    not to read it.
 3. Add the source-frame oracle once projection is a separable stage.
 
+Implemented in [source_frame.py](../src/asim_forge/source_semantics/source_frame.py)
+and [context_views.py](../src/asim_forge/semantic_mapping/context_views.py).
+
+**Registry revision `source-frame.v1`.** A role decomposes into four facets, and
+`custom` is reserved for roles the vocabulary cannot anchor at all rather than roles
+that merely leave a facet unstated. `identity.actor.user` names no property and is
+still a registered role; `vendor-specific-thing` is custom. Facet metrics are
+reported beside exact-role F1, and `unregistered_role_rate` exposes drift between
+what approaches emit and what the registry covers. A registry revision requires an
+explicit fixture migration.
+
+**Context views V0–V3 only.** V4 and V5 add external documentation and repository
+evidence that no current approach can consume, so registering them would imply a
+capability that does not exist. V1 preserves the same local token window
+`direct-lexical` is defined to read, so the view measures that assumption rather
+than starving it.
+
+**Measured on the current fixture.** V0 scores zero and V1 scores full; V2, V3, and
+the unmasked input add nothing. Every bit of signal both approaches use comes from
+the local token window. Representative values, the wider template, and all source
+metadata are currently worth nothing, which is a concrete statement of where the
+next signal has to come from.
+
 ### PR 4 — controlled track and the N2/N3 rungs
 
 Build the controlled and metamorphic track from the pinned catalogue before any
