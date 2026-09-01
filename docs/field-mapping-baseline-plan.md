@@ -146,6 +146,34 @@ answers are known by construction, and it exercises the version 2 record format
 end-to-end while defects are still cheap to fix. Then add the deterministic slot
 profiler (N2) and the classical matcher ensemble (N3).
 
+The controlled track is implemented in
+[controlled/](../src/asim_forge/controlled/); N2 and N3 follow separately so the
+new methods are measured on a track that was frozen before they existed.
+
+**Six perturbations in two families.** A label-preserving variant must not change
+the expected mapping; a label-changing variant must change it. An approach scoring
+identically on both is reading position rather than meaning. Results are reported
+as robustness slices and never averaged into real-case results.
+
+**Priors and retrieval are excluded, not merely unreported.** Priors read no source
+evidence, so surface robustness is undefined for them. Retrieval would match a
+perturbed variant to its own unperturbed seed, which is exactly the leakage
+[the split contract](semantic-dataset-splits.md) forbids. Requesting either raises
+rather than producing a number that looks like evidence.
+
+**Measured on the current fixture.** Abbreviation, compound identifiers, case
+changes, and direction swaps all behave correctly, so the tokenizer and the
+direction evidence are sound. Two failures are real:
+
+| Perturbation | `direct-lexical` | `semantic-frame` | Reading |
+| --- | --- | --- | --- |
+| `opaque-labels` | 0.857 to 0.286 | 1.000 to 0.667 | Slot labels carry a large share of the signal |
+| `decoy-slot` | 0.857 to 0.750 | no change | Direct lexical assigns a target to a slot that maps to nothing |
+
+Taken with the V1 result above, the frozen baseline reads the local token window
+and the slot label, and `direct-lexical` over-predicts on an unmapped slot of a
+familiar type. Those are the specific weaknesses N2 and N3 have to beat.
+
 ### PR 5 — bounded ASIM parser silver
 
 The B1 release described in [the corpus plan](non-llm-baseline-corpus.md#baseline-release-b1-automated-asim-silver),
