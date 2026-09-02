@@ -324,10 +324,12 @@ def test_semantic_corpus_uses_the_shared_comparison_contract(
     evaluation = SimpleNamespace(
         approach=SimpleNamespace(name="test-approach"),
         metrics=SimpleNamespace(model_dump=lambda mode: metrics),
+        intervals=[],
         warnings=["small fixture"],
     )
     monkeypatch.setattr(benchmarking, "load_catalog", lambda path: catalog)
     monkeypatch.setattr(benchmarking, "load_semantic_mapping_cases", lambda path: [object()])
+    monkeypatch.setattr(benchmarking, "_robustness_rows", lambda corpus, cases, cat: [])
     monkeypatch.setattr(
         benchmarking,
         "compare_approaches",
@@ -337,6 +339,8 @@ def test_semantic_corpus_uses_the_shared_comparison_contract(
             reference_case_count=1,
             split_id=None,
             evaluation_partition=None,
+            sample=None,
+            warnings=[],
         ),
     )
 
@@ -395,10 +399,12 @@ def test_semantic_benchmark_verifies_frozen_groups_before_split_comparison(
     evaluation = SimpleNamespace(
         approach=SimpleNamespace(name="case-retrieval"),
         metrics=SimpleNamespace(model_dump=lambda mode: metrics),
+        intervals=[],
         warnings=[],
     )
     monkeypatch.setattr(benchmarking, "load_catalog", lambda path: catalog)
     monkeypatch.setattr(benchmarking, "load_semantic_mapping_cases", lambda path: [object()])
+    monkeypatch.setattr(benchmarking, "_robustness_rows", lambda corpus, cases, cat: [])
     monkeypatch.setattr(benchmarking, "load_semantic_dataset_split", lambda path: split)
     monkeypatch.setattr(
         benchmarking,
@@ -419,6 +425,8 @@ def test_semantic_benchmark_verifies_frozen_groups_before_split_comparison(
             reference_case_count=2,
             split_id="source-family.v1",
             evaluation_partition=partition,
+            sample=None,
+            warnings=[],
         ),
     )
 

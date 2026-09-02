@@ -15,6 +15,11 @@ from ..evaluation_splits import (
     select_semantic_split,
 )
 from ..models import AsimCatalog, StrictModel
+from ..redistribution import (
+    RedistributionClass,
+    permits_per_case_output,
+    require_publishable,
+)
 from .approaches import APPROACH_NAMES, PRIOR_APPROACH_NAMES, build_approach
 from .context_views import ContextView, apply_context_view
 from .contracts import (
@@ -55,7 +60,9 @@ class ApproachEvaluation(StrictModel):
     metrics: EvaluationMetrics
     intervals: list[BootstrapInterval] = Field(default_factory=list)
     risk_coverage: RiskCoverageCurve | None = None
-    predictions: list[SemanticMappingPrediction] = Field(min_length=1)
+    predictions: list[SemanticMappingPrediction] = Field(default_factory=list)
+    # Set when predictions were withheld because the corpus licence forbids them.
+    predictions_withheld: int = Field(default=0, ge=0)
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -68,6 +75,7 @@ class ComparisonReport(StrictModel):
     evaluation_partition: EvaluationPartition | None = None
     oracle: OracleCondition = "none"
     context_view: ContextView = "full"
+    redistribution: RedistributionClass = "content"
     sample: SampleAdequacy | None = None
     approaches: list[ApproachEvaluation] = Field(min_length=1)
     paired_tests: list[PairedApproachTest] = Field(default_factory=list)
@@ -197,12 +205,57 @@ def compare_split_approaches(
     )
 
 
-def write_comparison_report(path: Path, report: ComparisonReport) -> None:
+def write_comparison_report(
+    path: Path,
+    report: ComparisonReport,
+    *,
+    redistribution: RedistributionClass = "content",
+) -> None:
+    """Write a report, withholding anything the corpus licence cannot publish."""
+    require_publishable(redistribution, "This comparison report")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps(report.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
+        json.dumps(
+            redact_report(report, redistribution).model_dump(mode="json"),
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
         encoding="utf-8",
         newline="\n",
+    )
+
+
+def redact_report(
+    report: ComparisonReport,
+    redistribution: RedistributionClass,
+) -> ComparisonReport:
+    """Strip per-case output when only aggregate metrics may leave the machine.
+
+    Prediction evidence quotes template text, so it is derived corpus content even
+    though it is not a copy of the source.
+    """
+    if permits_per_case_output(redistribution):
+        return report
+    approaches = [
+        evaluation.model_copy(
+            update={
+                "predictions": [],
+                "predictions_withheld": len(evaluation.predictions),
+            }
+        )
+        for evaluation in report.approaches
+    ]
+    return report.model_copy(
+        update={
+            "redistribution": redistribution,
+            "approaches": approaches,
+            "warnings": [
+                *report.warnings,
+                f"Per-case predictions withheld: the corpus is classed {redistribution!r}, "
+                "so evidence quoting source templates cannot be published.",
+            ],
+        }
     )
 
 

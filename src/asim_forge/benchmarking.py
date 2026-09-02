@@ -18,13 +18,16 @@ from pydantic import Field, model_validator
 
 from .catalog import load_catalog
 from .clustering import DeepParseClusterer
-from .evaluation import load_semantic_mapping_cases
+from .controlled import run_robustness
+from .evaluation import SemanticMappingCase, load_semantic_mapping_cases
 from .evaluation_splits import (
     load_semantic_dataset_split,
     validate_semantic_case_groups,
 )
 from .ingestion import read_events
-from .models import StrictModel
+from .models import AsimCatalog, StrictModel
+from .redistribution import DESCRIPTIONS as REDISTRIBUTION_DESCRIPTIONS
+from .redistribution import RedistributionClass, require_publishable, strictest
 from .schema_ranking import rank_clusters
 from .semantic_annotation import validate_semantic_promotion_artifacts
 from .semantic_mapping.comparison import compare_approaches, compare_split_approaches
@@ -41,6 +44,9 @@ class CorpusSource(StrictModel):
     url: str
     paper_url: str | None = None
     terms: str
+    # Enforced by the report writers; `terms` above stays as the human explanation.
+    redistribution: RedistributionClass = "metrics"
+    attribution: str | None = None
 
 
 class CorpusResource(StrictModel):
@@ -136,6 +142,33 @@ class BenchmarkRow(StrictModel):
     evaluation_partition: Literal["validation", "test"] | None = None
     reference_item_count: int | None = Field(default=None, ge=1)
     baseline_delta: float | None = None
+    # Source-family bootstrap interval on the primary metric, when one applies.
+    primary_metric_low: float | None = None
+    primary_metric_high: float | None = None
+
+
+class SampleResolution(StrictModel):
+    """What a corpus can decide, published beside the numbers it produced."""
+
+    corpus_id: str
+    case_count: int = Field(ge=1)
+    group_count: int = Field(ge=1)
+    grouping: str
+    minimum_detectable_effect: float = Field(ge=0)
+
+
+class RobustnessSummary(StrictModel):
+    """One controlled perturbation result, reported outside the headline metrics."""
+
+    corpus_id: str
+    approach: str
+    perturbation: str
+    family: str
+    baseline_field_micro_f1: float = Field(ge=0, le=1)
+    perturbed_field_micro_f1: float = Field(ge=0, le=1)
+    delta: float
+    prediction_stability: float = Field(ge=0, le=1)
+    passed: bool
 
 
 class BenchmarkReport(StrictModel):
@@ -143,8 +176,13 @@ class BenchmarkReport(StrictModel):
     revision: str
     catalogue_revision: str | None = None
     baseline_revision: str | None = None
+    # The least permissive class among the included corpora governs the whole report.
+    redistribution: RedistributionClass = "content"
+    attributions: list[str] = Field(default_factory=list)
     corpora: list[CorpusSummary] = Field(min_length=1)
     results: list[BenchmarkRow] = Field(min_length=1)
+    sample_resolution: list[SampleResolution] = Field(default_factory=list)
+    robustness: list[RobustnessSummary] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -194,9 +232,15 @@ def run_benchmarks(
     cache = cache_dir or output_dir / "cache"
     corpora: list[CorpusSummary] = []
     results: list[BenchmarkRow] = []
+    sample_resolution: list[SampleResolution] = []
+    robustness: list[RobustnessSummary] = []
     warnings: list[str] = []
 
     for path, manifest, fingerprint in manifests:
+        require_publishable(
+            manifest.source.redistribution,
+            f"Corpus {manifest.corpus_id!r}",
+        )
         corpora.append(
             CorpusSummary(
                 corpus_id=manifest.corpus_id,
@@ -233,6 +277,10 @@ def run_benchmarks(
                 )
             for evaluation in comparison.approaches:
                 metrics = evaluation.metrics.model_dump(mode="json")
+                interval = next(
+                    (item for item in evaluation.intervals if item.metric == "field_micro_f1"),
+                    None,
+                )
                 results.append(
                     BenchmarkRow(
                         corpus_id=manifest.corpus_id,
@@ -241,6 +289,8 @@ def run_benchmarks(
                         item_count=comparison.case_count,
                         metrics=metrics,
                         primary_metric="field_micro_f1",
+                        primary_metric_low=interval.lower if interval is not None else None,
+                        primary_metric_high=interval.upper if interval is not None else None,
                         split_id=comparison.split_id,
                         evaluation_partition=comparison.evaluation_partition,
                         reference_item_count=(
@@ -254,6 +304,18 @@ def run_benchmarks(
                     f"{manifest.corpus_id}/{evaluation.approach.name}: {warning}"
                     for warning in evaluation.warnings
                 )
+            warnings.extend(f"{manifest.corpus_id}: {warning}" for warning in comparison.warnings)
+            if comparison.sample is not None:
+                sample_resolution.append(
+                    SampleResolution(
+                        corpus_id=manifest.corpus_id,
+                        case_count=comparison.sample.case_count,
+                        group_count=comparison.sample.group_count,
+                        grouping=comparison.sample.grouping,
+                        minimum_detectable_effect=comparison.sample.minimum_detectable_effect,
+                    )
+                )
+            robustness.extend(_robustness_rows(manifest.corpus_id, cases, catalog))
             continue
 
         with tempfile.TemporaryDirectory(prefix="asim-forge-benchmark-") as temporary:
@@ -338,8 +400,18 @@ def run_benchmarks(
     report = BenchmarkReport(
         revision=revision,
         catalogue_revision=catalog.manifest.resolved_revision if catalog is not None else None,
+        redistribution=strictest([corpus.source.redistribution for corpus in corpora]),
+        attributions=sorted(
+            {
+                corpus.source.attribution
+                for corpus in corpora
+                if corpus.source.attribution is not None
+            }
+        ),
         corpora=corpora,
         results=results,
+        sample_resolution=sample_resolution,
+        robustness=robustness,
         warnings=warnings,
     )
     if baseline_path is not None and baseline_path.is_file():
@@ -374,6 +446,29 @@ def parsing_metrics(predicted: list[int], gold: list[str]) -> dict[str, float | 
     }
 
 
+def _robustness_rows(
+    corpus_id: str,
+    cases: list[SemanticMappingCase],
+    catalog: AsimCatalog,
+) -> list[RobustnessSummary]:
+    """Controlled perturbation results, kept out of the headline metrics."""
+    report = run_robustness(cases, catalog)
+    return [
+        RobustnessSummary(
+            corpus_id=corpus_id,
+            approach=row.approach,
+            perturbation=row.perturbation,
+            family=row.family,
+            baseline_field_micro_f1=row.baseline_field_micro_f1,
+            perturbed_field_micro_f1=row.perturbed_field_micro_f1,
+            delta=row.field_micro_f1_delta,
+            prediction_stability=row.prediction_stability,
+            passed=row.passed,
+        )
+        for row in report.rows
+    ]
+
+
 def write_benchmark_report(output_dir: Path, report: BenchmarkReport) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "benchmark-report.json").write_text(
@@ -393,6 +488,7 @@ def render_markdown(report: BenchmarkReport) -> str:
         lines.append(f"Baseline: `{report.baseline_revision}`")
     if report.catalogue_revision is not None:
         lines.append(f"ASIM catalogue: `{report.catalogue_revision}`")
+    lines.extend(_provenance_section(report))
     lines.extend(["", "## Parsing gold", ""])
     parsing_rows = [row for row in report.results if row.track == "parsing-gold"]
     lines.extend(
@@ -472,7 +568,10 @@ def render_markdown(report: BenchmarkReport) -> str:
             "Agreement uses Microsoft sample placement as a file-level schema hint. It is "
             "weak upstream supervision, not adjudicated ASIM schema or field ground truth.",
             "",
-            "## Adjudicated ASIM mapping",
+            "## ASIM semantic mapping",
+            "",
+            "Only corpora whose labels are independently adjudicated support an ASIM "
+            "correctness claim. Read the permitted claim for each corpus above.",
             "",
         ]
     )
@@ -485,8 +584,11 @@ def render_markdown(report: BenchmarkReport) -> str:
                 "Approach",
                 "Refs/cases",
                 "Schema@1",
+                "Cand@5",
                 "Role F1",
+                "Facet F1",
                 "Field F1",
+                "Field F1 CI",
                 "Exact",
                 "Delta",
             ],
@@ -505,8 +607,11 @@ def render_markdown(report: BenchmarkReport) -> str:
                         else f"—/{row.item_count}"
                     ),
                     _number(row.metrics["schema_top1_accuracy"]),
+                    _number(row.metrics.get("candidate_recall_at_5", 0)),
                     _number(row.metrics["source_micro_f1"]),
+                    _number(row.metrics.get("source_facet_micro_f1", 0)),
                     _number(row.metrics["field_micro_f1"]),
+                    _interval(row.primary_metric_low, row.primary_metric_high),
                     _number(row.metrics["mapping_exact_match"]),
                     _delta(row.baseline_delta),
                 ]
@@ -514,11 +619,124 @@ def render_markdown(report: BenchmarkReport) -> str:
             ],
         )
     )
+    lines.extend(_resolution_section(report))
+    lines.extend(_robustness_section(report))
     if report.warnings:
         lines.extend(["", "## Warnings", ""])
         lines.extend(f"- {warning}" for warning in report.warnings)
+    lines.extend(_attribution_section(report))
     lines.append("")
     return "\n".join(lines)
+
+
+def _provenance_section(report: BenchmarkReport) -> list[str]:
+    """Name each corpus's evidence track and what may be published from it."""
+    lines = [
+        "",
+        "## Evidence and redistribution",
+        "",
+        f"Governing redistribution class for this report: `{report.redistribution}`. "
+        f"{REDISTRIBUTION_DESCRIPTIONS[report.redistribution]}",
+        "",
+        "Every section below is a separate evidence track. A result may only support the "
+        "claim its own track permits, and results are never combined across tracks.",
+        "",
+    ]
+    lines.extend(
+        _table(
+            ["Corpus", "Track", "Redistribution", "Permitted claim"],
+            [
+                [
+                    corpus.title,
+                    f"`{corpus.track}`",
+                    f"`{corpus.source.redistribution}`",
+                    corpus.interpretation,
+                ]
+                for corpus in report.corpora
+            ],
+        )
+    )
+    return lines
+
+
+def _resolution_section(report: BenchmarkReport) -> list[str]:
+    if not report.sample_resolution:
+        return []
+    lines = ["", "### What these samples can resolve", ""]
+    lines.extend(
+        _table(
+            ["Corpus", "Cases", "Groups", "Grouping", "Smallest resolvable difference"],
+            [
+                [
+                    entry.corpus_id,
+                    str(entry.case_count),
+                    str(entry.group_count),
+                    entry.grouping,
+                    _number(entry.minimum_detectable_effect),
+                ]
+                for entry in report.sample_resolution
+            ],
+        )
+    )
+    lines.extend(
+        [
+            "",
+            "Resolution is bounded by group count, not case count. Differences smaller than "
+            "the value above are not distinguishable from source-family noise.",
+        ]
+    )
+    return lines
+
+
+def _robustness_section(report: BenchmarkReport) -> list[str]:
+    if not report.robustness:
+        return []
+    lines = [
+        "",
+        "## Controlled robustness",
+        "",
+        "Generated variants of the seed cases, scored as slices. These are synthetic by "
+        "construction and are never averaged into the results above.",
+        "",
+    ]
+    lines.extend(
+        _table(
+            [
+                "Approach",
+                "Perturbation",
+                "Family",
+                "Base F1",
+                "Perturbed F1",
+                "Stability",
+                "Result",
+            ],
+            [
+                [
+                    row.approach,
+                    row.perturbation,
+                    row.family,
+                    _number(row.baseline_field_micro_f1),
+                    _number(row.perturbed_field_micro_f1),
+                    _number(row.prediction_stability),
+                    "pass" if row.passed else "**fail**",
+                ]
+                for row in report.robustness
+            ],
+        )
+    )
+    return lines
+
+
+def _attribution_section(report: BenchmarkReport) -> list[str]:
+    if not report.attributions:
+        return []
+    return ["", "## Attribution", "", *(f"- {item}" for item in report.attributions)]
+
+
+def _interval(low: float | None, high: float | None) -> str:
+    if low is None or high is None:
+        return "—"
+    return f"{low:.3f}–{high:.3f}"
 
 
 def _stage_resource(

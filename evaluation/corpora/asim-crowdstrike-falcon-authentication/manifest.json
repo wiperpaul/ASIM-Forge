@@ -9,7 +9,9 @@
   "source": {
     "project": "Microsoft Sentinel ASIM sample data",
     "url": "https://github.com/Azure/Azure-Sentinel/tree/027a0f9338bfabcb27b784571b771c54572ebf01/Sample%20Data/ASIM",
-    "terms": "MIT-licensed Azure-Sentinel repository; samples are sanitized upstream. Retain provenance and review upstream terms before redistribution."
+    "terms": "MIT-licensed Azure-Sentinel repository; samples are sanitized upstream. Retain provenance and review upstream terms before redistribution.",
+    "redistribution": "content",
+    "attribution": "Microsoft Sentinel ASIM sample data, Azure-Sentinel repository, MIT licence."
   },
   "resources": [
     {

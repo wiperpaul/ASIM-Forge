@@ -10,7 +10,9 @@
     "project": "Matryoshka",
     "url": "https://github.com/julien-piet/matryoshka/tree/2ee96934823ce3d01f70bdf84ff8cd4aa64acd2a/examples",
     "paper_url": "https://people.eecs.berkeley.edu/~julien.piet/matryoshka.pdf",
-    "terms": "Public paper artifact; review the upstream repository licence before redistribution."
+    "terms": "Public paper artifact; review the upstream repository licence before redistribution.",
+    "redistribution": "metrics",
+    "attribution": "Matryoshka SecurityLogs (julien-piet/matryoshka)."
   },
   "resources": [
     {

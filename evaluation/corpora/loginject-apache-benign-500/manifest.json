@@ -10,7 +10,9 @@
     "project": "LogInject USENIX Security 2026 artifact",
     "url": "https://zenodo.org/records/20436935",
     "paper_url": "https://www.usenix.org/conference/usenixsecurity26/presentation/karanjai",
-    "terms": "CC BY 4.0 Zenodo artifact."
+    "terms": "CC BY 4.0 Zenodo artifact.",
+    "redistribution": "content",
+    "attribution": "LogInject artifact, CC BY 4.0, via Zenodo."
   },
   "resources": [
     {
