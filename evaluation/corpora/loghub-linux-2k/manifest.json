@@ -10,7 +10,9 @@
     "project": "LogHub",
     "url": "https://github.com/logpai/loghub/tree/dd61d0952749ee7963bde24220d1be5ede023033/Linux",
     "paper_url": "https://arxiv.org/abs/2008.06448",
-    "terms": "Public research dataset; review the upstream repository terms before redistribution."
+    "terms": "Public research dataset; review the upstream repository terms before redistribution.",
+    "redistribution": "derived",
+    "attribution": "LogHub (logpai/loghub), arXiv:2008.06448."
   },
   "resources": [
     {

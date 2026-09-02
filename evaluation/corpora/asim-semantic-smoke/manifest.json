@@ -1,7 +1,7 @@
 {
   "format_version": "1",
   "corpus_id": "asim-semantic-smoke",
-  "title": "Adjudicated ASIM semantic smoke cases",
+  "title": "ASIM semantic smoke cases",
   "track": "semantic-gold",
   "objective": "ASIM schema, source-role, and field-mapping correctness",
   "system": "asim-forge-synthetic",
@@ -9,7 +9,8 @@
   "source": {
     "project": "ASIM Forge",
     "url": "https://github.com/wiperpaul/ASIM-Forge/tree/main/examples/evaluation",
-    "terms": "GPL-3.0-or-later repository fixture."
+    "terms": "GPL-3.0-or-later repository fixture.",
+    "redistribution": "content"
   },
   "resources": [],
   "cases": "../../../examples/evaluation/semantic-mapping-cases.jsonl"

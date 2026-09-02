@@ -207,7 +207,46 @@ The B1 release described in [the corpus plan](non-llm-baseline-corpus.md#baselin
 bounded to Authentication, NetworkSession, and AuditEvent, CEF parser families
 first, split by parser family before anything is tuned.
 
+## Publishing results under restrictive licences
+
+The most useful remaining evidence cannot be republished. The Elastic integrations
+are Elastic Licence 2.0, LogHub 2.0 restricts use to research, AIT-LDS is
+CC BY-NC-SA, and several community repositories carry no root licence at all. A
+prose `terms` note does not stop a release from publishing derived content, so
+every corpus declares a machine-actionable class that the report writers enforce.
+
+| Class | Permits |
+| --- | --- |
+| `content` | Source content, derived artefacts, and metrics |
+| `derived` | Derived artefacts and metrics, but not the source content |
+| `metrics` | Aggregate metrics and the acquisition manifest only |
+| `none` | Nothing; the corpus is a local gate and cannot appear in a release |
+
+An undeclared corpus defaults to `metrics`, so forgetting to classify one fails
+closed. The strictest class among the included corpora governs the whole report.
+
+**Prediction evidence is derived content.** Evidence strings quote template text,
+so a `metrics` corpus has its per-case predictions withheld and the count recorded.
+Aggregate metrics, intervals, and risk-coverage curves survive, because they carry
+no source text.
+
+**Reproducibility does not require redistribution.** The manifest already pins a
+source URL, an immutable revision, and a SHA-256 per resource, plus a corpus
+fingerprint. A third party holding their own licensed copy can verify byte
+equality and reproduce the run without the project shipping the bytes.
+
+## Release report structure
+
+The release report renders each evidence track as its own section, headed by a
+provenance table naming every corpus's track, redistribution class, and permitted
+claim. Results are never combined across tracks.
+
+Controlled robustness appears as clearly separated slices, and sample resolution is
+published beside the numbers so a reader sees the minimum detectable effect before
+reading a difference. Required attributions are emitted at the end of the report.
+
 ## Corpus selection
+
 
 The corpus decision in [the corpus plan](non-llm-baseline-corpus.md) stands. This
 note records only the sequencing change and the documented-silver sources that plan
