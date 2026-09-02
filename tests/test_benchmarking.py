@@ -87,11 +87,11 @@ def test_checked_corpus_registry_has_separate_objective_tracks() -> None:
     loaded = load_corpus_manifests(Path("evaluation/corpora"))
 
     tracks = [manifest.track for _, manifest, _ in loaded]
-    assert len(loaded) == 10
+    assert len(loaded) == 11
     assert tracks.count("parsing-gold") == 3
     assert tracks.count("format-diagnostic") == 3
     assert tracks.count("schema-hint") == 3
-    assert tracks.count("semantic-gold") == 1
+    assert tracks.count("semantic-gold") == 2
     assert all(len(fingerprint) == 64 for _, _, fingerprint in loaded)
 
 

@@ -1,0 +1,18 @@
+{
+  "format_version": "1",
+  "corpus_id": "asim-cef-dev",
+  "title": "CEF and syslog development mapping cases",
+  "track": "semantic-gold",
+  "objective": "Discriminate mapping approaches across independent source families",
+  "system": "asim-forge-dev",
+  "interpretation": "Unadjudicated development labels derived from documented CEF field meaning and the pinned ASIM schema. Useful for error discovery and approach comparison; it is not adjudicated gold and supports no ASIM correctness claim. No grouped split is defined, so case-retrieval sees near-identical siblings from its own source family and its score here is leakage rather than quality.",
+  "source": {
+    "project": "Microsoft Sentinel ASIM sample data and LogHub",
+    "url": "https://github.com/Azure/Azure-Sentinel/tree/master/Sample%20Data/ASIM",
+    "terms": "Source events are MIT-licensed Azure-Sentinel samples and LogHub research templates. Labels are added by this repository and are not upstream claims.",
+    "redistribution": "derived",
+    "attribution": "Source events from Microsoft Sentinel ASIM sample data (MIT) and LogHub (logpai/loghub)."
+  },
+  "resources": [],
+  "cases": "cases.jsonl"
+}
